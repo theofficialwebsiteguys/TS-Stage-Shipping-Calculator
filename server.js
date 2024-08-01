@@ -153,8 +153,6 @@ app.post('/shopify/rate', async (req, res) => {
   const { rate } = req.body;
   const { origin, destination, items, currency, locale } = rate;
   
-  const shop = req.query;  // Make sure to pass the shop parameter in the request
-  console.log("Shop: " + querystring.stringify(shop));
   const accessToken = process.env.SHOPIFY_ACCESS_TOKEN;  // Store your Shopify access token in the environment variable
 
   console.log("Origin: ", origin);
