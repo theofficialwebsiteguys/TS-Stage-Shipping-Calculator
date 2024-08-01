@@ -33,7 +33,7 @@ app.get('/shopify', (req, res) => {
     '&state=' + state +
     '&redirect_uri=' + redirectUri;
 
-    //res.cookie('state', state);
+    res.cookie('state', state);
     res.redirect(installUrl);
   } else{
     return res.status(400).send("Missing shop parameter.")
@@ -44,12 +44,15 @@ app.get('/shopify/callback', (req, res) => {
   const { shop, hmac, code, state } = req.query;
   const stateCookie = cookie.parse(req.headers.cookie).state;
 
-  // if(state !== stateCookie) {
-  //   return res.status(403).send('Request origin cannot be verified');
-  // }
+  console.log(state);
+  console.log(stateCookie);
+
+  if(state !== stateCookie) {
+    return res.status(403).send('Request origin cannot be verified');
+  }
 
   if(shop && hmac && code){
-    const map = Object.assign({}, req.query);
+    const map = { ...req.query};
     delete map['hmac'];
     const message = querystring.stringify(map);
     const generatedHash = crypto.createHmac('sha256', process.env.SHOPIFY_API_SECRET).update(message).digest('hex');
