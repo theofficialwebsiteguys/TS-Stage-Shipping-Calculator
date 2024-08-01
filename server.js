@@ -152,14 +152,9 @@ app.get('/shopify/callback', (req, res) => {
 app.post('/shopify/rate', async (req, res) => {
   const { rate } = req.body;
   const { origin, destination, items, currency, locale } = rate;
-
-  // Ensure the shop domain is passed as part of the request (e.g., via a query parameter)
-  const shop = req.query.shop || req.body.shop;  
-  const accessToken = process.env.SHOPIFY_ACCESS_TOKEN;  // Ensure this token is set properly
-
-  if (!shop || !accessToken) {
-    return res.status(400).send('Shop or access token missing');
-  }
+  
+  const shop = req.query.shop;  // Make sure to pass the shop parameter in the request
+  const accessToken = process.env.SHOPIFY_ACCESS_TOKEN;  // Store your Shopify access token in the environment variable
 
   console.log("Origin: ", origin);
   console.log("Destination: ", destination);
