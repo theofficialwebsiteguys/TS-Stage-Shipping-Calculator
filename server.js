@@ -4,6 +4,7 @@ const cookie = require('cookie');
 const crypto = require('crypto');
 const querystring = require('querystring');
 const nonce = require('nonce')();
+const request = require('request-promise');
 const { Shopify } = require('@shopify/shopify-api');
 require('dotenv').config();
 
