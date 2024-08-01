@@ -149,17 +149,9 @@ app.get('/shopify/callback', (req, res) => {
 //   }
 // });
 
-app.post('/shopify/rate', async (req, res) => {
+app.post('/shopify/rate', (req, res) => {
   const { rate } = req.body;
   const { origin, destination, items, currency, locale } = rate;
-
-  // Ensure the shop domain is passed as part of the request (e.g., via a query parameter)
-  const shop = req.query.shop || req.body.shop;  
-  const accessToken = process.env.SHOPIFY_ACCESS_TOKEN;  // Ensure this token is set properly
-
-  if (!shop || !accessToken) {
-    return res.status(400).send('Shop or access token missing');
-  }
 
   console.log("Origin: ", origin);
   console.log("Destination: ", destination);
@@ -167,62 +159,27 @@ app.post('/shopify/rate', async (req, res) => {
   console.log("Currency: ", currency);
   console.log("Locale: ", locale);
 
-  try {
-    // Fetch metafields for each item
-    const itemMetafieldsPromises = items.map(async (item) => {
-      const metafieldsUrl = `https://${shop}/admin/api/2021-04/products/${item.product_id}/metafields.json`;
-      const metafieldsResponse = await axios.get(metafieldsUrl, {
-        headers: {
-          'X-Shopify-Access-Token': accessToken
-        }
-      });
-      return {
-        item,
-        metafields: metafieldsResponse.data.metafields
-      };
-    });
+  // Implement your shipping rate calculation logic here
+  // For demonstration, let's assume we have a simple flat rate calculation
 
-    const itemsWithMetafields = await Promise.all(itemMetafieldsPromises);
+  const calculatedRate = {
+    "rates": [
+      {
+        "service_name": "Standard Shipping",
+        "service_code": "standard",
+        "total_price": "5000", // Price in cents
+        "description": "Standard Shipping",
+        "currency": "USD",
+        "min_delivery_date": "2024-08-01T14:48:45Z",
+        "max_delivery_date": "2024-08-03T14:48:45Z"
+      }
+    ]
+  };
 
-    console.log("Items with Metafields: ", itemsWithMetafields);
-
-    // Implement your shipping rate calculation logic here
-    // For demonstration, let's assume we have a simple flat rate calculation
-
-    const calculatedRate = {
-      "rates": [
-        {
-          "service_name": "Standard Shipping",
-          "service_code": "standard",
-          "total_price": "4000", // Price in cents
-          "description": "Standard Shipping",
-          "currency": "USD",
-          "min_delivery_date": "2024-08-01T14:48:45Z",
-          "max_delivery_date": "2024-08-03T14:48:45Z"
-        }
-      ]
-    };
-
-    res.json(calculatedRate);
-
-  } catch (error) {
-    console.error("Error fetching metafields: ", error);
-    res.status(500).send('Error fetching metafields');
-  }
-});
-
-app.listen(PORT, () => {
-  console.log(`App running on port ${PORT}`);
+  res.json(calculatedRate);
 });
 
 
 app.listen(PORT, () => {
   console.log(`App running on port ${PORT}`);
-}).on('error', (err) => {
-  if (err.code === 'EADDRINUSE') {
-    console.error(`Port ${PORT} is already in use`);
-    process.exit(1);
-  } else {
-    throw err;
-  }
 });
