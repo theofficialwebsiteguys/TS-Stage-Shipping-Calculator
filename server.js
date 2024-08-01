@@ -150,12 +150,14 @@ app.get('/shopify/callback', (req, res) => {
 // });
 
 app.post('/shopify/rate', (req, res) => {
-  const { rate, service, items, shipping_address } = req.query;
+  const { rate } = req.body;
+  const { origin, destination, items, currency, locale } = rate;
 
-  console.log("rate: " + rate)
-  console.log("service: " + service)
-  console.log("items: " + items)
-  console.log("shipping_address: " + shipping_address)
+  console.log("Origin: ", origin);
+  console.log("Destination: ", destination);
+  console.log("Items: ", items);
+  console.log("Currency: ", currency);
+  console.log("Locale: ", locale);
 
   // Implement your shipping rate calculation logic here
   // For demonstration, let's assume we have a simple flat rate calculation
@@ -176,6 +178,7 @@ app.post('/shopify/rate', (req, res) => {
 
   res.json(calculatedRate);
 });
+
 
 app.listen(PORT, () => {
   console.log(`App running on port ${PORT}`);
