@@ -1,5 +1,7 @@
 const express = require('express');
 const axios = require('axios');
+const cookie = require('cookie');
+const nonce = require('nonce');
 const { Shopify } = require('@shopify/shopify-api');
 //const shippo = require('shippo')(process.env.SHIPPO_API_KEY);
 require('dotenv').config();
@@ -19,8 +21,21 @@ app.use(express.urlencoded({ extended: true }));
 //   API_VERSION: '2021-04',
 // });
 
-app.get('/', (req, res) => {
-  res.send('Hello World')
+app.get('/shopify', (req, res) => {
+  const shop = req.query.shop;
+  if(shop){
+    const state = nonce();
+    const redirectUri =  process.env.HOST + '/shopify/callback';
+    const installUrl = 'https://' + shop + '/admin/oauth/authorize?client_id=' + process.env.SHOPIFY_API_SECRET +
+    '&scope=write_products' +
+    '&state=' + state +
+    '&redirect_uri=' + redirectUri;
+
+    res.cookie('state', state);
+    res.redirect(installUrl);
+  } else{
+    return res.status(400).send("Missing shop parameter.")
+  }
 });
 
 // OAuth route to start the authentication process
