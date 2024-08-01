@@ -1,6 +1,9 @@
 const express = require('express');
 const axios = require('axios');
 const cookie = require('cookie');
+const crypto = require('crypto');
+const querystring = require('querystring');
+const request = require('request-promise');
 const nonce = require('nonce');
 const { Shopify } = require('@shopify/shopify-api');
 //const shippo = require('shippo')(process.env.SHIPPO_API_KEY);
@@ -35,6 +38,30 @@ app.get('/shopify', (req, res) => {
     res.redirect(installUrl);
   } else{
     return res.status(400).send("Missing shop parameter.")
+  }
+});
+
+app.get('/shopify', (req, res) => {
+  const { shop, hmac, code, state } = req.query;
+  const stateCookie = cookie.parse(req.headers.cookie).state;
+
+  if(state !== stateCookie) {
+    return res.status(403).send('Request origin cannot be verified');
+  }
+
+  if(shop && hmac && code){
+    const map = Object.assign({}, req.query);
+    delete map['hmac'];
+    const message = querystring.stringify(map);
+    const generatedHash = crypto.createHmac('sha256', process.env.SHOPIFY_API_SECRET).update(message).digest('hex');
+
+    if(generatedHash !== hmac) {
+      return res.status(400).send('HMAC validation failed');
+    }
+
+    res.status(200).send('HMAC validated');
+  }else{
+    res.status(400).send('Required parameters missing');
   }
 });
 
