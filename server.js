@@ -152,6 +152,11 @@ app.get('/shopify/callback', (req, res) => {
 app.post('/shopify/rate', (req, res) => {
   const { rate, service, items, shipping_address } = req.body;
 
+  console.log("rate: " + rate)
+  console.log("service: " + service)
+  console.log("items: " + items)
+  console.log("shipping_address: " + shipping_address)
+
   // Implement your shipping rate calculation logic here
   // For demonstration, let's assume we have a simple flat rate calculation
 
