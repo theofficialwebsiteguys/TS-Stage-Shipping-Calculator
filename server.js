@@ -149,9 +149,12 @@ app.get('/shopify/callback', (req, res) => {
 //   }
 // });
 
-app.post('/shopify/rate', (req, res) => {
+app.post('/shopify/rate', async (req, res) => {
   const { rate } = req.body;
   const { origin, destination, items, currency, locale } = rate;
+  
+  const shop = req.query.shop;  // Make sure to pass the shop parameter in the request
+  const accessToken = process.env.SHOPIFY_ACCESS_TOKEN;  // Store your Shopify access token in the environment variable
 
   console.log("Origin: ", origin);
   console.log("Destination: ", destination);
@@ -159,24 +162,48 @@ app.post('/shopify/rate', (req, res) => {
   console.log("Currency: ", currency);
   console.log("Locale: ", locale);
 
-  // Implement your shipping rate calculation logic here
-  // For demonstration, let's assume we have a simple flat rate calculation
+  try {
+    // Fetch metafields for each item
+    const itemMetafieldsPromises = items.map(async (item) => {
+      const metafieldsUrl = `https://${shop}/admin/api/2021-04/products/${item.product_id}/metafields.json`;
+      const metafieldsResponse = await axios.get(metafieldsUrl, {
+        headers: {
+          'X-Shopify-Access-Token': accessToken
+        }
+      });
+      return {
+        item,
+        metafields: metafieldsResponse.data.metafields
+      };
+    });
 
-  const calculatedRate = {
-    "rates": [
-      {
-        "service_name": "Standard Shipping",
-        "service_code": "standard",
-        "total_price": "5000", // Price in cents
-        "description": "Standard Shipping",
-        "currency": "USD",
-        "min_delivery_date": "2024-08-01T14:48:45Z",
-        "max_delivery_date": "2024-08-03T14:48:45Z"
-      }
-    ]
-  };
+    const itemsWithMetafields = await Promise.all(itemMetafieldsPromises);
 
-  res.json(calculatedRate);
+    console.log("Items with Metafields: ", itemsWithMetafields);
+
+    // Implement your shipping rate calculation logic here
+    // For demonstration, let's assume we have a simple flat rate calculation
+
+    const calculatedRate = {
+      "rates": [
+        {
+          "service_name": "Standard Shipping",
+          "service_code": "standard",
+          "total_price": "5000", // Price in cents
+          "description": "Standard Shipping",
+          "currency": "USD",
+          "min_delivery_date": "2024-08-01T14:48:45Z",
+          "max_delivery_date": "2024-08-03T14:48:45Z"
+        }
+      ]
+    };
+
+    res.json(calculatedRate);
+
+  } catch (error) {
+    console.error("Error fetching metafields: ", error);
+    res.status(500).send('Error fetching metafields');
+  }
 });
 
 
