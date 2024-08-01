@@ -20,10 +20,10 @@ app.get('/shopify', (req, res) => {
     const redirectUri = 'https://ts-shipping-calculator-ab26e219466a.herokuapp.com/shopify/callback';
     const installUrl = 'https://' + shop + '/admin/oauth/authorize?client_id=' + process.env.SHOPIFY_API_KEY +
       '&scope=write_products' +
-      '&state=' + state +
+      '&state=' + encodeURIComponent(state) +
       '&redirect_uri=' + redirectUri;
 
-    res.cookie('state', state);
+    res.cookie('state', encodeURIComponent(state));
     res.redirect(installUrl);
   } else {
     return res.status(400).send("Missing shop parameter.");
@@ -32,7 +32,7 @@ app.get('/shopify', (req, res) => {
 
 app.get('/shopify/callback', (req, res) => {
   const { shop, hmac, code, state } = req.query;
-  const stateCookie = cookie.parse(req.headers.cookie).state;
+  const stateCookie = decodeURIComponent(cookie.parse(req.headers.cookie).state);
 
   console.log("State: " + state);
   console.log("State Cookie: " + stateCookie);
