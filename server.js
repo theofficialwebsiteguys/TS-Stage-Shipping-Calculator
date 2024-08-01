@@ -19,6 +19,10 @@ Shopify.Context.initialize({
   API_VERSION: '2021-04',
 });
 
+app.get('/', (req, res) => {
+  res.send('Hello World')
+});
+
 // OAuth route to start the authentication process
 app.get('/auth', async (req, res) => {
   const { shop } = req.query;
