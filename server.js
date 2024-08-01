@@ -166,7 +166,7 @@ app.post('/shopify/rate', async (req, res) => {
   try {
     // Fetch metafields for each item
     const itemMetafieldsPromises = items.map(async (item) => {
-      const metafieldsUrl = `https://${shop}/admin/api/2021-04/products/${item.product_id}/metafields.json`;
+      const metafieldsUrl = `https://ts-stage-testing.myshopify.com/admin/api/2021-04/products/${item.product_id}/metafields.json`;
       const metafieldsResponse = await axios.get(metafieldsUrl, {
         headers: {
           'X-Shopify-Access-Token': accessToken
