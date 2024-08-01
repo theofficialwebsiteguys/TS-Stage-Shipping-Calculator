@@ -26,7 +26,7 @@ app.get('/shopify', (req, res) => {
   if(shop){
     const state = nonce();
     const redirectUri =  process.env.HOST + '/shopify/callback';
-    const installUrl = 'https://' + shop + '/admin/oauth/authorize?client_id=' + process.env.SHOPIFY_API_SECRET +
+    const installUrl = 'https://' + shop + '/admin/oauth/authorize?client_id=' + process.env.SHOPIFY_API_KEY +
     '&scope=write_products' +
     '&state=' + state +
     '&redirect_uri=' + redirectUri;
