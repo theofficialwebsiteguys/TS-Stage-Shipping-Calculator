@@ -3,7 +3,6 @@ const axios = require('axios');
 const cookie = require('cookie');
 const crypto = require('crypto');
 const querystring = require('querystring');
-const request = require('request-promise');
 const nonce = require('nonce');
 const { Shopify } = require('@shopify/shopify-api');
 //const shippo = require('shippo')(process.env.SHIPPO_API_KEY);
