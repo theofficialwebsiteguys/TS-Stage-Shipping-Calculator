@@ -150,7 +150,7 @@ app.get('/shopify/callback', (req, res) => {
 // });
 
 app.post('/shopify/rate', (req, res) => {
-  const { rate, service, items, shipping_address } = req.body;
+  const { rate, service, items, shipping_address } = req.query;
 
   console.log("rate: " + rate)
   console.log("service: " + service)
