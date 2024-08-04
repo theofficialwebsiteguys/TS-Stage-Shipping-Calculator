@@ -202,16 +202,9 @@ app.post('/shopify/rate', async (req, res) => {
   const { rate } = req.body;
   const { origin, destination, items, currency, locale } = rate;
 
-  // console.log("Origin: ", origin);
-  // console.log("Destination: ", destination);
-  // console.log("Items: ", items);
-  // console.log("Currency: ", currency);
-  // console.log("Locale: ", locale);
-
   const shop = 'ts-stage-testing.myshopify.com'; // You should retrieve this dynamically if needed
 
   const accessToken = accessTokenStore[shop]; // Retrieve the access token from the store
-
   console.log("Access-Token: " + accessToken);
 
   if (!accessToken) {
@@ -236,13 +229,13 @@ app.post('/shopify/rate', async (req, res) => {
     const productId = item.product_id;
 
     try {
-      const metafieldsResponse = await axios.get(`https://${shop}/admin/api/2024-07/products/${productId}/metafields.json`, {
+      const metafieldsResponse = await axios.get(`https://${shop}/admin/api/2024-07/metafields.json?metafield[owner-id]=${productId}&metafield[owner-resource]=product`, {
         headers: apiRequestHeader
       });
 
-      console.log(metafieldsResponse);
-
       const metafields = metafieldsResponse.data.metafields;
+      console.log(`Metafields for product ${productId}: `, metafields);
+
       const itemMetafields = {};
 
       metafieldsToRetrieve.forEach((key) => {
@@ -283,6 +276,7 @@ app.post('/shopify/rate', async (req, res) => {
 
   res.json(calculatedRate);
 });
+
 
 
 app.listen(PORT, () => {
