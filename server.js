@@ -214,55 +214,66 @@ app.post('/shopify/rate', async (req, res) => {
     'Content-Type': 'application/json'
   };
 
-  const metafieldsPromises = items.map(async (item) => {
-    const productId = item.product_id;
+  try {
+    const shopResponse = await axios.get(`https://${shop}/admin/api/2023-10/shop.json`, {
+      headers: apiRequestHeader
+    });
 
-    try {
-      const metafieldsResponse = await axios.get(`https://${shop}/admin/api/2023-10/products/${productId}/metafields.json`, {
-        headers: apiRequestHeader
-      });
+    console.log('Shop Info:', shopResponse.data);
 
-      console.log(`Metafields for product ${productId}:`, metafieldsResponse.data);
+    const metafieldsPromises = items.map(async (item) => {
+      const productId = item.product_id;
 
-      const metafields = metafieldsResponse.data.metafields;
-      const itemMetafields = {};
+      try {
+        const metafieldsResponse = await axios.get(`https://${shop}/admin/api/2023-10/products/${productId}/metafields.json`, {
+          headers: apiRequestHeader
+        });
 
-      metafields.forEach((metafield) => {
-        const key = `${metafield.namespace}.${metafield.key}`;
-        if (['global.oversized', 'global.free_shipping', 'global.free_ship_discount', 'custom.height', 'custom.width', 'custom.length'].includes(key)) {
-          itemMetafields[key] = metafield.value;
-        }
-      });
+        console.log(`Metafields response for product ${productId}:`, metafieldsResponse.data);
 
-      return { ...item, metafields: itemMetafields };
-    } catch (error) {
-      console.error(`Error retrieving metafields for product ${productId}:`, error.response ? error.response.data : error.message);
-      return { ...item, metafields: {} };
-    }
-  });
+        const metafields = metafieldsResponse.data.metafields;
+        const itemMetafields = {};
 
-  const itemsWithMetafields = await Promise.all(metafieldsPromises);
+        metafields.forEach((metafield) => {
+          const key = `${metafield.namespace}.${metafield.key}`;
+          if (['global.oversized', 'global.free_shipping', 'global.free_ship_discount', 'custom.height', 'custom.width', 'custom.length'].includes(key)) {
+            itemMetafields[key] = metafield.value;
+          }
+        });
 
-  console.log('Items with Metafields: ', itemsWithMetafields);
-
-  // Implement your shipping rate calculation logic here using itemsWithMetafields
-  // For demonstration, let's assume we have a simple flat rate calculation
-
-  const calculatedRate = {
-    "rates": [
-      {
-        "service_name": "Standard Shipping",
-        "service_code": "standard",
-        "total_price": "5000", // Price in cents
-        "description": "Standard Shipping",
-        "currency": "USD",
-        "min_delivery_date": "2024-08-01T14:48:45Z",
-        "max_delivery_date": "2024-08-03T14:48:45Z"
+        return { ...item, metafields: itemMetafields };
+      } catch (error) {
+        console.error(`Error retrieving metafields for product ${productId}:`, error.response ? error.response.data : error.message);
+        return { ...item, metafields: {} };
       }
-    ]
-  };
+    });
 
-  res.json(calculatedRate);
+    const itemsWithMetafields = await Promise.all(metafieldsPromises);
+
+    console.log('Items with Metafields: ', itemsWithMetafields);
+
+    // Implement your shipping rate calculation logic here using itemsWithMetafields
+    // For demonstration, let's assume we have a simple flat rate calculation
+
+    const calculatedRate = {
+      "rates": [
+        {
+          "service_name": "Standard Shipping",
+          "service_code": "standard",
+          "total_price": "5000", // Price in cents
+          "description": "Standard Shipping",
+          "currency": "USD",
+          "min_delivery_date": "2024-08-01T14:48:45Z",
+          "max_delivery_date": "2024-08-03T14:48:45Z"
+        }
+      ]
+    };
+
+    res.json(calculatedRate);
+  } catch (error) {
+    console.error('Error retrieving shop info:', error.response ? error.response.data : error.message);
+    res.status(500).send('Error retrieving shop info');
+  }
 });
 
 
