@@ -218,7 +218,7 @@ app.post('/shopify/rate', async (req, res) => {
     const productId = item.product_id;
 
     try {
-      const metafieldsResponse = await axios.get(`https://${shop}/admin/api/2023-10/metafields.json?metafield[owner_id]=${productId}&metafield[owner_resource]=product`, {
+      const metafieldsResponse = await axios.get(`https://${shop}/admin/api/2023-10/products/${productId}/metafields.json`, {
         headers: apiRequestHeader
       });
 
