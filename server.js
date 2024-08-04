@@ -22,7 +22,7 @@ app.get('/shopify', (req, res) => {
     const state = nonce();
     const redirectUri = 'https://ts-shipping-calculator-ab26e219466a.herokuapp.com/shopify/callback';
     const installUrl = 'https://' + shop + '/admin/oauth/authorize?client_id=' + process.env.SHOPIFY_API_KEY +
-      '&scope=write_shipping' +
+      '&scope=write_shipping,read_products' +
       '&state=' + state +
       '&redirect_uri=' + redirectUri;
 
