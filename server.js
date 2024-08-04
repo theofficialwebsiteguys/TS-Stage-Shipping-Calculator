@@ -202,30 +202,12 @@ app.post('/shopify/rate', async (req, res) => {
   const { rate } = req.body;
   const { origin, destination, items, currency, locale } = rate;
 
-  // console.log("Origin: ", origin);
-  // console.log("Destination: ", destination);
-  // console.log("Items: ", items);
-  // console.log("Currency: ", currency);
-  // console.log("Locale: ", locale);
-
   const shop = 'ts-stage-testing.myshopify.com'; // You should retrieve this dynamically if needed
-
   const accessToken = accessTokenStore[shop]; // Retrieve the access token from the store
-
-  console.log("Access-Token: " + accessToken);
 
   if (!accessToken) {
     return res.status(403).send('Access token not found for the shop');
   }
-
-  const metafieldsToRetrieve = [
-    'global.oversized',
-    'global.free_shipping',
-    'global.free_ship_discount',
-    'custom.height',
-    'custom.width',
-    'custom.length'
-  ];
 
   const apiRequestHeader = {
     'X-Shopify-Access-Token': accessToken,
@@ -236,26 +218,25 @@ app.post('/shopify/rate', async (req, res) => {
     const productId = item.product_id;
 
     try {
-      const metafieldsResponse = await axios.get(`https://${shop}/admin/api/2023-10/products/${productId}/metafields.json`, {
+      const metafieldsResponse = await axios.get(`https://${shop}/admin/api/2023-10/metafields.json?metafield[owner_id]=${productId}&metafield[owner_resource]=product`, {
         headers: apiRequestHeader
       });
 
-      console.log(metafieldsResponse)
+      console.log(`Metafields for product ${productId}:`, metafieldsResponse.data);
 
       const metafields = metafieldsResponse.data.metafields;
       const itemMetafields = {};
 
-      metafieldsToRetrieve.forEach((key) => {
-        const [namespace, keyName] = key.split('.');
-        const metafield = metafields.find(mf => mf.namespace === namespace && mf.key === keyName);
-        if (metafield) {
+      metafields.forEach((metafield) => {
+        const key = `${metafield.namespace}.${metafield.key}`;
+        if (['global.oversized', 'global.free_shipping', 'global.free_ship_discount', 'custom.height', 'custom.width', 'custom.length'].includes(key)) {
           itemMetafields[key] = metafield.value;
         }
       });
 
       return { ...item, metafields: itemMetafields };
     } catch (error) {
-      console.error(`Error retrieving metafields for product ${productId}:`, error);
+      console.error(`Error retrieving metafields for product ${productId}:`, error.response ? error.response.data : error.message);
       return { ...item, metafields: {} };
     }
   });
