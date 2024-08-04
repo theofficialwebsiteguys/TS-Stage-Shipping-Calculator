@@ -128,6 +128,9 @@ app.get('/shopify/callback', (req, res) => {
 
         // Store the access token in the in-memory store
         accessTokenStore[shop] = accessToken;
+       
+
+        console.log("Access-Token: " + accessTokenStore[shop]);
 
         const carrierServiceRequestUrl = `https://${shop}/admin/carrier_services.json`;
         const carrierServicePayload = {
