@@ -236,7 +236,7 @@ app.post('/shopify/rate', async (req, res) => {
 
         metafields.forEach((metafield) => {
           const key = `${metafield.namespace}.${metafield.key}`;
-          if (['global.oversized', 'global.free_shipping', 'global.free_ship_discount', 'custom.height', 'custom.width', 'custom.length'].includes(key)) {
+          if (['custom.height', 'custom.width', 'custom.length'].includes(key)) {
             itemMetafields[key] = metafield.value;
           }
         });
