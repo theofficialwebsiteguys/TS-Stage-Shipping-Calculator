@@ -130,7 +130,7 @@ app.get('/shopify/callback', (req, res) => {
         accessTokenStore[shop] = accessToken;
        
 
-        console.log("Access-Token1: " + accessToken);
+        console.log("Access-Token1: " + accessTokenStore[shop]);
 
         const carrierServiceRequestUrl = `https://${shop}/admin/carrier_services.json`;
         const carrierServicePayload = {
