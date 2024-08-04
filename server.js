@@ -199,15 +199,17 @@ app.post('/shopify/rate', async (req, res) => {
   const { rate } = req.body;
   const { origin, destination, items, currency, locale } = rate;
 
-  console.log("Origin: ", origin);
-  console.log("Destination: ", destination);
-  console.log("Items: ", items);
-  console.log("Currency: ", currency);
-  console.log("Locale: ", locale);
+  // console.log("Origin: ", origin);
+  // console.log("Destination: ", destination);
+  // console.log("Items: ", items);
+  // console.log("Currency: ", currency);
+  // console.log("Locale: ", locale);
 
   const shop = 'https://ts-stage-testing.myshopify.com/'; // You should retrieve this dynamically if needed
 
   const accessToken = accessTokenStore[shop]; // Retrieve the access token from the store
+
+  console.log("Access-Token: " + accessToken);
 
   if (!accessToken) {
     return res.status(403).send('Access token not found for the shop');
