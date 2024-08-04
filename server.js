@@ -208,7 +208,7 @@ app.post('/shopify/rate', async (req, res) => {
   // console.log("Currency: ", currency);
   // console.log("Locale: ", locale);
 
-  const shop = 'https://ts-stage-testing.myshopify.com/'; // You should retrieve this dynamically if needed
+  const shop = 'ts-stage-testing.myshopify.com/'; // You should retrieve this dynamically if needed
 
   const accessToken = accessTokenStore[shop]; // Retrieve the access token from the store
 
