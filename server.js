@@ -167,7 +167,7 @@ app.post('/shopify/rate', (req, res) => {
       {
         "service_name": "Standard Shipping",
         "service_code": "standard",
-        "total_price": "5000", // Price in cents
+        "total_price": "3000", // Price in cents
         "description": "Standard Shipping",
         "currency": "USD",
         "min_delivery_date": "2024-08-01T14:48:45Z",
