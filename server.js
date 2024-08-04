@@ -240,6 +240,8 @@ app.post('/shopify/rate', async (req, res) => {
         headers: apiRequestHeader
       });
 
+      console.log(metafieldsResponse);
+
       const metafields = metafieldsResponse.data.metafields;
       const itemMetafields = {};
 
