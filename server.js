@@ -140,13 +140,25 @@ app.get('/shopify/callback', (req, res) => {
           await Promise.all(metafieldPromises);
         };
 
+        // Function to retrieve all products with pagination
+        const getAllProducts = async () => {
+          let products = [];
+          let pageInfo = null;
+
+          do {
+            const url = `https://${shop}/admin/api/2023-10/products.json?limit=250` + (pageInfo ? `&page_info=${pageInfo}` : '');
+            const response = await axios.get(url, { headers: apiRequestHeader });
+
+            products = products.concat(response.data.products);
+            pageInfo = response.headers['link'] ? new URLSearchParams(response.headers['link'].split(';')[0].replace(/[<>]/g, '')).get('page_info') : null;
+          } while (pageInfo);
+
+          return products;
+        };
+
         // Get all products and create metafields for each product
         try {
-          const productsResponse = await axios.get(`https://${shop}/admin/api/2023-10/products.json`, {
-            headers: apiRequestHeader
-          });
-
-          const products = productsResponse.data.products;
+          const products = await getAllProducts();
 
           console.log(products);
 
