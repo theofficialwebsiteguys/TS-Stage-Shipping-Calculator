@@ -6,7 +6,7 @@ const querystring = require('querystring');
 const nonce = require('nonce')();
 const request = require('request-promise');
 const { Shopify } = require('@shopify/shopify-api');
-const Shippo = require('shippo');
+const shippo = require('shippo')(process.env.SHIPPO_API_KEY);
 const { count } = require('console');
 require('dotenv').config();
 
@@ -199,9 +199,6 @@ app.get('/shopify/callback', (req, res) => {
 
 //   res.json(calculatedRate);
 // });
-
-
-const shippo = Shippo(process.env.SHIPPO_API_KEY);
 
 app.post('/shopify/rate', async (req, res) => {
   const { rate } = req.body;
