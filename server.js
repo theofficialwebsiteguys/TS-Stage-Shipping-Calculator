@@ -228,6 +228,7 @@ app.post('/shopify/rate', async (req, res) => {
 
     let totalOrder = 0;
     const freeShipOver = 29900;
+    let oversizedItem = null;
 
     itemsWithMetafields.forEach(item => {
       totalOrder += item.price * item.quantity;
@@ -235,7 +236,6 @@ app.post('/shopify/rate', async (req, res) => {
 
     let weight = 0;
     let freeShipping = false;
-    let oversizedExists = false;
     let commonProductExists = false;
 
     itemsWithMetafields.forEach(item => {
@@ -248,7 +248,7 @@ app.post('/shopify/rate', async (req, res) => {
       const freeShipOverSized = metafields['global.free_ship_discount'] ? JSON.parse(metafields['global.free_ship_discount']) : null;
 
       if (oversized) {
-        oversizedExists = true;
+        oversizedItem = item;
       } else if (freeShipping || freeShipOverSized) {
         if (totalOrder >= freeShipOver) {
           freeShipping = true;
@@ -265,6 +265,10 @@ app.post('/shopify/rate', async (req, res) => {
         }
       }
     });
+
+    if (oversizedItem) {
+      console.log('Oversized Item:', oversizedItem);
+    }
 
     weight *= 0.00220462; // Convert grams to pounds
 
@@ -288,14 +292,16 @@ app.post('/shopify/rate', async (req, res) => {
     };
     console.log('Address To:', addressTo);
 
-    const parcels = itemsWithMetafields.map(item => ({
-      length: item.metafields['custom.length'].value || 1,
-      width: item.metafields['custom.width'].value || 1,
-      height: item.metafields['custom.height'].value || 1,
-      distance_unit: 'in',
-      weight: item.grams * 0.00220462, // Shippo expects weight in pounds
-      mass_unit: 'lb'
-    }));
+    const parcels = itemsWithMetafields
+      .filter(item => !item.metafields['global.free_shipping'] && !item.metafields['global.free_ship_discount'])
+      .map(item => ({
+        length: item.metafields['custom.length'] ? JSON.parse(item.metafields['custom.length']).value : 10,
+        width: item.metafields['custom.width'] ? JSON.parse(item.metafields['custom.width']).value : 10,
+        height: item.metafields['custom.height'] ? JSON.parse(item.metafields['custom.height']).value : 10,
+        distance_unit: 'in',
+        weight: item.grams * 0.00220462, // Shippo expects weight in pounds
+        mass_unit: 'lb'
+      }));
     console.log('Parcels:', parcels);
 
     const shipment = await shippo.shipment.create({
@@ -335,7 +341,10 @@ app.post('/shopify/rate', async (req, res) => {
     };
     console.log('Calculated Rates:', calculatedRates);
 
-    res.json(calculatedRates);
+    res.json({
+      message: oversizedItem ? 'Oversized Item: Shipping Rate Calculated Fullfillment.' : null,
+      rates: calculatedRates.rates
+    });
   } catch (error) {
     console.error('Error retrieving shop info:', error.response ? error.response.data : error.message);
     res.status(500).send('Error retrieving shop info');
