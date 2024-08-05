@@ -25,7 +25,7 @@ app.get('/shopify', (req, res) => {
     const state = nonce();
     const redirectUri = 'https://ts-shipping-calculator-ab26e219466a.herokuapp.com/shopify/callback';
     const installUrl = 'https://' + shop + '/admin/oauth/authorize?client_id=' + process.env.SHOPIFY_API_KEY +
-      '&scope=write_shipping,read_products' +
+      '&scope=write_shipping,read_products,write_products' +
       '&state=' + state +
       '&redirect_uri=' + redirectUri;
 
@@ -35,70 +35,6 @@ app.get('/shopify', (req, res) => {
     return res.status(400).send("Missing shop parameter.");
   }
 });
-
-// app.get('/shopify/callback', (req, res) => {
-//   const { shop, hmac, code, state } = req.query;
-//   const stateCookie = cookie.parse(req.headers.cookie).state;
-
-//   if (state !== stateCookie) {
-//     return res.status(403).send('Request origin cannot be verified');
-//   }
-
-//   if (shop && hmac && code) {
-//     const map = { ...req.query };
-//     delete map['hmac'];
-//     const message = querystring.stringify(map);
-//     const generatedHash = crypto.createHmac('sha256', process.env.SHOPIFY_API_SECRET).update(message).digest('hex');
-
-//     if (generatedHash !== hmac) {
-//       return res.status(400).send('HMAC validation failed');
-//     }
-
-//     const accessTokenRequestUrl = `https://${shop}/admin/oauth/access_token`;
-//     const accessTokenPayload = {
-//       client_id: process.env.SHOPIFY_API_KEY,
-//       client_secret: process.env.SHOPIFY_API_SECRET,
-//       code
-//     };
-
-//     request.post(accessTokenRequestUrl, { json: accessTokenPayload })
-//       .then((accessTokenResponse) => {
-//         const accessToken = accessTokenResponse.access_token;
-
-//         const carrierServiceRequestUrl = `https://${shop}/admin/carrier_services.json`;
-//         const carrierServicePayload = {
-//           carrier_service: {
-//             name: "Custom Shipping Rate Calculator",
-//             callback_url: "https://ts-shipping-calculator-ab26e219466a.herokuapp.com/shopify/rate",
-//             service_discovery: true
-//           }
-//         };
-
-//         const apiRequestHeader = {
-//           'X-Shopify-Access-Token': accessToken,
-//           'Content-Type': 'application/json'
-//         };
-
-//         request.post(carrierServiceRequestUrl, {
-//           headers: apiRequestHeader,
-//           json: carrierServicePayload
-//         })
-//           .then(() => {
-//             res.send('Carrier service created successfully');
-//           })
-//           .catch((error) => {
-//             res.status(error.statusCode).send(error.error.error_description);
-//           });
-
-//       })
-//       .catch((error) => {
-//         res.status(error.statusCode).send(error.error.error_description);
-//       });
-
-//   } else {
-//     res.status(400).send('Required parameters missing');
-//   }
-// });
 
 app.get('/shopify/callback', (req, res) => {
   const { shop, hmac, code, state } = req.query;
@@ -126,12 +62,12 @@ app.get('/shopify/callback', (req, res) => {
     };
 
     request.post(accessTokenRequestUrl, { json: accessTokenPayload })
-      .then((accessTokenResponse) => {
+      .then(async (accessTokenResponse) => {
         const accessToken = accessTokenResponse.access_token;
 
         // Store the access token in the in-memory store
         accessTokenStore[shop] = accessToken;
-       
+
         console.log("SHOP: " + shop);
         console.log("Access-Token1: " + accessTokenStore[shop]);
 
@@ -149,17 +85,67 @@ app.get('/shopify/callback', (req, res) => {
           'Content-Type': 'application/json'
         };
 
-        request.post(carrierServiceRequestUrl, {
-          headers: apiRequestHeader,
-          json: carrierServicePayload
-        })
-          .then(() => {
-            res.send('Carrier service created successfully');
-          })
-          .catch((error) => {
-            res.status(error.statusCode).send(error.error.error_description);
+        try {
+          await request.post(carrierServiceRequestUrl, {
+            headers: apiRequestHeader,
+            json: carrierServicePayload
+          });
+          console.log('Carrier service created successfully');
+        } catch (error) {
+          console.error('Error creating carrier service:', error.response ? error.response.data : error.message);
+        }
+
+        // Get all products and create metafields for each product
+        try {
+          const productsResponse = await axios.get(`https://${shop}/admin/api/2023-10/products.json`, {
+            headers: apiRequestHeader
           });
 
+          const products = productsResponse.data.products;
+
+          const metafieldPromises = products.map(async (product) => {
+            const productId = product.id;
+
+            const metafieldsPayload = {
+              metafields: [
+                {
+                  namespace: 'global',
+                  key: 'oversized',
+                  value: 'false',
+                  value_type: 'string'
+                },
+                {
+                  namespace: 'global',
+                  key: 'free_shipping',
+                  value: 'false',
+                  value_type: 'string'
+                },
+                {
+                  namespace: 'global',
+                  key: 'free_ship_discount',
+                  value: 'false',
+                  value_type: 'string'
+                }
+              ]
+            };
+
+            try {
+              await axios.post(`https://${shop}/admin/api/2023-10/products/${productId}/metafields.json`, metafieldsPayload, {
+                headers: apiRequestHeader
+              });
+              console.log(`Metafields created for product ${productId}`);
+            } catch (error) {
+              console.error(`Error creating metafields for product ${productId}:`, error.response ? error.response.data : error.message);
+            }
+          });
+
+          await Promise.all(metafieldPromises);
+          console.log('Metafields created successfully for all products');
+        } catch (error) {
+          console.error('Error retrieving products:', error.response ? error.response.data : error.message);
+        }
+
+        res.send('App installed and metafields created successfully');
       })
       .catch((error) => {
         res.status(error.statusCode).send(error.error.error_description);
@@ -169,116 +155,6 @@ app.get('/shopify/callback', (req, res) => {
     res.status(400).send('Required parameters missing');
   }
 });
-
-// app.post('/shopify/rate', (req, res) => {
-//   const { rate } = req.body;
-//   const { origin, destination, items, currency, locale } = rate;
-
-//   console.log("Origin: ", origin);
-//   console.log("Destination: ", destination);
-//   console.log("Items: ", items);
-//   console.log("Currency: ", currency);
-//   console.log("Locale: ", locale);
-
-//   // Implement your shipping rate calculation logic here
-//   // For demonstration, let's assume we have a simple flat rate calculation
-
-//   const calculatedRate = {
-//     "rates": [
-//       {
-//         "service_name": "Standard Shipping",
-//         "service_code": "standard",
-//         "total_price": "3000", // Price in cents
-//         "description": "Standard Shipping",
-//         "currency": "USD",
-//         "min_delivery_date": "2024-08-01T14:48:45Z",
-//         "max_delivery_date": "2024-08-03T14:48:45Z"
-//       }
-//     ]
-//   };
-
-//   res.json(calculatedRate);
-// });
-
-
-// app.post('/shopify/rate', async (req, res) => {
-//   const { rate } = req.body;
-//   const { origin, destination, items, currency, locale } = rate;
-
-//   const shop = 'ts-stage-testing.myshopify.com'; // You should retrieve this dynamically if needed
-//   const accessToken = accessTokenStore[shop]; // Retrieve the access token from the store
-
-//   if (!accessToken) {
-//     return res.status(403).send('Access token not found for the shop');
-//   }
-
-//   const apiRequestHeader = {
-//     'X-Shopify-Access-Token': accessToken,
-//     'Content-Type': 'application/json'
-//   };
-
-//   try {
-//     const shopResponse = await axios.get(`https://${shop}/admin/api/2023-10/shop.json`, {
-//       headers: apiRequestHeader
-//     });
-
-//     console.log('Shop Info:', shopResponse.data);
-
-//     const metafieldsPromises = items.map(async (item) => {
-//       const productId = item.product_id;
-
-//       try {
-//         const metafieldsResponse = await axios.get(`https://${shop}/admin/api/2023-10/products/${productId}/metafields.json`, {
-//           headers: apiRequestHeader
-//         });
-
-//         console.log(`Metafields response for product ${productId}:`, metafieldsResponse.data);
-
-//         const metafields = metafieldsResponse.data.metafields;
-//         const itemMetafields = {};
-
-//         metafields.forEach((metafield) => {
-//           const key = `${metafield.namespace}.${metafield.key}`;
-//           if (['custom.height', 'custom.width', 'custom.length'].includes(key)) {
-//             itemMetafields[key] = metafield.value;
-//           }
-//         });
-
-//         return { ...item, metafields: itemMetafields };
-//       } catch (error) {
-//         console.error(`Error retrieving metafields for product ${productId}:`, error.response ? error.response.data : error.message);
-//         return { ...item, metafields: {} };
-//       }
-//     });
-
-//     const itemsWithMetafields = await Promise.all(metafieldsPromises);
-
-//     console.log('Items with Metafields: ', itemsWithMetafields);
-
-//     // Implement your shipping rate calculation logic here using itemsWithMetafields
-//     // For demonstration, let's assume we have a simple flat rate calculation
-
-//     const calculatedRate = {
-//       "rates": [
-//         {
-//           "service_name": "Standard Shipping",
-//           "service_code": "standard",
-//           "total_price": "5000", // Price in cents
-//           "description": "Standard Shipping",
-//           "currency": "USD",
-//           "min_delivery_date": "2024-08-01T14:48:45Z",
-//           "max_delivery_date": "2024-08-03T14:48:45Z"
-//         }
-//       ]
-//     };
-
-//     res.json(calculatedRate);
-//   } catch (error) {
-//     console.error('Error retrieving shop info:', error.response ? error.response.data : error.message);
-//     res.status(500).send('Error retrieving shop info');
-//   }
-// });
-
 
 app.post('/shopify/rate', async (req, res) => {
   const { rate } = req.body;
@@ -435,7 +311,6 @@ app.post('/shopify/rate', async (req, res) => {
     res.status(500).send('Error retrieving shop info');
   }
 });
-
 
 app.listen(PORT, () => {
   console.log(`App running on port ${PORT}`);
