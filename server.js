@@ -6,6 +6,9 @@ const querystring = require('querystring');
 const nonce = require('nonce')();
 const request = require('request-promise');
 const { Shopify } = require('@shopify/shopify-api');
+
+const shippo = require('shippo')(process.env.SHIPPO_API_KEY);
+
 require('dotenv').config();
 
 const app = express();
@@ -198,6 +201,85 @@ app.get('/shopify/callback', (req, res) => {
 // });
 
 
+// app.post('/shopify/rate', async (req, res) => {
+//   const { rate } = req.body;
+//   const { origin, destination, items, currency, locale } = rate;
+
+//   const shop = 'ts-stage-testing.myshopify.com'; // You should retrieve this dynamically if needed
+//   const accessToken = accessTokenStore[shop]; // Retrieve the access token from the store
+
+//   if (!accessToken) {
+//     return res.status(403).send('Access token not found for the shop');
+//   }
+
+//   const apiRequestHeader = {
+//     'X-Shopify-Access-Token': accessToken,
+//     'Content-Type': 'application/json'
+//   };
+
+//   try {
+//     const shopResponse = await axios.get(`https://${shop}/admin/api/2023-10/shop.json`, {
+//       headers: apiRequestHeader
+//     });
+
+//     console.log('Shop Info:', shopResponse.data);
+
+//     const metafieldsPromises = items.map(async (item) => {
+//       const productId = item.product_id;
+
+//       try {
+//         const metafieldsResponse = await axios.get(`https://${shop}/admin/api/2023-10/products/${productId}/metafields.json`, {
+//           headers: apiRequestHeader
+//         });
+
+//         console.log(`Metafields response for product ${productId}:`, metafieldsResponse.data);
+
+//         const metafields = metafieldsResponse.data.metafields;
+//         const itemMetafields = {};
+
+//         metafields.forEach((metafield) => {
+//           const key = `${metafield.namespace}.${metafield.key}`;
+//           if (['custom.height', 'custom.width', 'custom.length'].includes(key)) {
+//             itemMetafields[key] = metafield.value;
+//           }
+//         });
+
+//         return { ...item, metafields: itemMetafields };
+//       } catch (error) {
+//         console.error(`Error retrieving metafields for product ${productId}:`, error.response ? error.response.data : error.message);
+//         return { ...item, metafields: {} };
+//       }
+//     });
+
+//     const itemsWithMetafields = await Promise.all(metafieldsPromises);
+
+//     console.log('Items with Metafields: ', itemsWithMetafields);
+
+//     // Implement your shipping rate calculation logic here using itemsWithMetafields
+//     // For demonstration, let's assume we have a simple flat rate calculation
+
+//     const calculatedRate = {
+//       "rates": [
+//         {
+//           "service_name": "Standard Shipping",
+//           "service_code": "standard",
+//           "total_price": "5000", // Price in cents
+//           "description": "Standard Shipping",
+//           "currency": "USD",
+//           "min_delivery_date": "2024-08-01T14:48:45Z",
+//           "max_delivery_date": "2024-08-03T14:48:45Z"
+//         }
+//       ]
+//     };
+
+//     res.json(calculatedRate);
+//   } catch (error) {
+//     console.error('Error retrieving shop info:', error.response ? error.response.data : error.message);
+//     res.status(500).send('Error retrieving shop info');
+//   }
+// });
+
+
 app.post('/shopify/rate', async (req, res) => {
   const { rate } = req.body;
   const { origin, destination, items, currency, locale } = rate;
@@ -219,57 +301,135 @@ app.post('/shopify/rate', async (req, res) => {
       headers: apiRequestHeader
     });
 
-    console.log('Shop Info:', shopResponse.data);
-
     const metafieldsPromises = items.map(async (item) => {
       const productId = item.product_id;
-
       try {
         const metafieldsResponse = await axios.get(`https://${shop}/admin/api/2023-10/products/${productId}/metafields.json`, {
           headers: apiRequestHeader
         });
-
-        console.log(`Metafields response for product ${productId}:`, metafieldsResponse.data);
 
         const metafields = metafieldsResponse.data.metafields;
         const itemMetafields = {};
 
         metafields.forEach((metafield) => {
           const key = `${metafield.namespace}.${metafield.key}`;
-          if (['custom.height', 'custom.width', 'custom.length'].includes(key)) {
+          if (['global.oversized', 'global.free_shipping', 'global.free_ship_discount', 'custom.height', 'custom.width', 'custom.length'].includes(key)) {
             itemMetafields[key] = metafield.value;
           }
         });
 
         return { ...item, metafields: itemMetafields };
       } catch (error) {
-        console.error(`Error retrieving metafields for product ${productId}:`, error.response ? error.response.data : error.message);
         return { ...item, metafields: {} };
       }
     });
 
     const itemsWithMetafields = await Promise.all(metafieldsPromises);
 
-    console.log('Items with Metafields: ', itemsWithMetafields);
+    let totalOrder = 0;
+    const freeShipOver = 29900;
 
-    // Implement your shipping rate calculation logic here using itemsWithMetafields
-    // For demonstration, let's assume we have a simple flat rate calculation
+    itemsWithMetafields.forEach(item => {
+      totalOrder += item.price * item.quantity;
+    });
 
-    const calculatedRate = {
-      "rates": [
-        {
-          "service_name": "Standard Shipping",
-          "service_code": "standard",
-          "total_price": "5000", // Price in cents
-          "description": "Standard Shipping",
-          "currency": "USD",
-          "min_delivery_date": "2024-08-01T14:48:45Z",
-          "max_delivery_date": "2024-08-03T14:48:45Z"
+    let weight = 0;
+    let freeShipping = false;
+    let oversizedExists = false;
+    let commonProductExists = false;
+
+    itemsWithMetafields.forEach(item => {
+      const metafields = item.metafields;
+      const height = metafields['custom.height'] ? JSON.parse(metafields['custom.height']) : null;
+      const length = metafields['custom.length'] ? JSON.parse(metafields['custom.length']) : null;
+      const width = metafields['custom.width'] ? JSON.parse(metafields['custom.width']) : null;
+      const oversized = metafields['global.oversized'] ? JSON.parse(metafields['global.oversized']) : null;
+      const freeShipping = metafields['global.free_shipping'] ? JSON.parse(metafields['global.free_shipping']) : null;
+      const freeShipOverSized = metafields['global.free_ship_discount'] ? JSON.parse(metafields['global.free_ship_discount']) : null;
+
+      if (oversized) {
+        oversizedExists = true;
+      } else if (freeShipping || freeShipOverSized) {
+        if (totalOrder >= freeShipOver) {
+          freeShipping = true;
+        } else {
+          if (item.requires_shipping) {
+            commonProductExists = true;
+            weight += item.grams * item.quantity;
+          }
         }
-      ]
+      } else {
+        if (item.requires_shipping) {
+          commonProductExists = true;
+          weight += item.grams * item.quantity;
+        }
+      }
+    });
+
+    weight *= 0.00220462; // Convert grams to pounds
+
+    const addressFrom = {
+      name: shopResponse.data.name,
+      street1: origin.address1,
+      city: origin.city,
+      state: origin.province,
+      zip: origin.postal_code,
+      country: origin.country
     };
 
-    res.json(calculatedRate);
+    const addressTo = {
+      name: destination.name,
+      street1: destination.address1,
+      city: destination.city,
+      state: destination.province,
+      zip: destination.postal_code,
+      country: destination.country
+    };
+
+    const parcels = itemsWithMetafields.map(item => ({
+      length: item.metafields['custom.length'] || 1,
+      width: item.metafields['custom.width'] || 1,
+      height: item.metafields['custom.height'] || 1,
+      distance_unit: 'in',
+      weight: item.grams * 0.00220462, // Shippo expects weight in pounds
+      mass_unit: 'lb'
+    }));
+
+    const shipment = await shippo.shipment.create({
+      address_from: addressFrom,
+      address_to: addressTo,
+      parcels: parcels,
+      async: false
+    });
+
+    const rates = shipment.rates;
+
+    if (freeShipping && !commonProductExists) {
+      rates.push({
+        amount: "0.00",
+        provider: "Free Ground Shipping",
+        servicelevel: {
+          name: "Free Ground Shipping",
+          token: "free-ground-shipping"
+        },
+        estimated_days: 2,
+        currency: "USD"
+      });
+    }
+
+    const calculatedRates = {
+      "rates": rates.map(rate => ({
+        "service_name": rate.servicelevel.name,
+        "service_code": rate.servicelevel.token,
+        "total_price": (parseFloat(rate.amount) * 100).toFixed(0), // converting to cents
+        "currency": rate.currency,
+        "min_delivery_date": rate.estimated_days ? new Date(Date.now() + rate.estimated_days * 24 * 60 * 60 * 1000).toISOString() : undefined,
+        "max_delivery_date": rate.estimated_days ? new Date(Date.now() + (rate.estimated_days + 2) * 24 * 60 * 60 * 1000).toISOString() : undefined,
+        "description": rate.provider
+      }))
+    };
+
+    res.json(calculatedRates);
   } catch (error) {
     console.error('Error retrieving shop info:', error.response ? error.response.data : error.message);
     res.status(500).send('Error retrieving shop info');
