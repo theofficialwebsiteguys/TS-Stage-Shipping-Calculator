@@ -98,73 +98,73 @@ app.get('/shopify/callback', (req, res) => {
         }
 
         // Initialize the rate limiter
-        const limiter = new Bottleneck({
-          minTime: 500 // 2 requests per second
-        });
+        // const limiter = new Bottleneck({
+        //   minTime: 500 // 2 requests per second
+        // });
 
-        // Function to create a single metafield
-        const createMetafield = async (productId, metafield) => {
-          try {
-            await axios.post(`https://${shop}/admin/api/2023-10/products/${productId}/metafields.json`, { metafield }, {
-              headers: apiRequestHeader
-            });
-            console.log(`Metafield ${metafield.key} created for product ${productId}`);
-          } catch (error) {
-            console.error(`Error creating metafield ${metafield.key} for product ${productId}:`, error.response ? error.response.data : error.message);
-          }
-        };
+        // // Function to create a single metafield
+        // const createMetafield = async (productId, metafield) => {
+        //   try {
+        //     await axios.post(`https://${shop}/admin/api/2023-10/products/${productId}/metafields.json`, { metafield }, {
+        //       headers: apiRequestHeader
+        //     });
+        //     console.log(`Metafield ${metafield.key} created for product ${productId}`);
+        //   } catch (error) {
+        //     console.error(`Error creating metafield ${metafield.key} for product ${productId}:`, error.response ? error.response.data : error.message);
+        //   }
+        // };
 
-        // Function to create all metafields for a product
-        const createAllMetafields = async (productId) => {
-          const metafieldsPayloads = [
-            {
-              namespace: 'global',
-              key: 'oversized',
-              value: 'false',
-              type: 'single_line_text_field'
-            },
-            {
-              namespace: 'global',
-              key: 'free_shipping',
-              value: 'false',
-              type: 'single_line_text_field'
-            },
-            {
-              namespace: 'global',
-              key: 'free_ship_discount',
-              value: 'false',
-              type: 'single_line_text_field'
-            }
-          ];
+        // // Function to create all metafields for a product
+        // const createAllMetafields = async (productId) => {
+        //   const metafieldsPayloads = [
+        //     {
+        //       namespace: 'global',
+        //       key: 'oversized',
+        //       value: 'false',
+        //       type: 'single_line_text_field'
+        //     },
+        //     {
+        //       namespace: 'global',
+        //       key: 'free_shipping',
+        //       value: 'false',
+        //       type: 'single_line_text_field'
+        //     },
+        //     {
+        //       namespace: 'global',
+        //       key: 'free_ship_discount',
+        //       value: 'false',
+        //       type: 'single_line_text_field'
+        //     }
+        //   ];
 
-          const metafieldPromises = metafieldsPayloads.map(metafield => createMetafield(productId, metafield));
-          await Promise.all(metafieldPromises);
-        };
+        //   const metafieldPromises = metafieldsPayloads.map(metafield => createMetafield(productId, metafield));
+        //   await Promise.all(metafieldPromises);
+        // };
 
-        // Function to retrieve the specific product by title
-        const getProductByTitle = async (title) => {
-          const url = `https://${shop}/admin/api/2023-10/products.json?title=${encodeURIComponent(title)}`;
-          const response = await axios.get(url, { headers: apiRequestHeader });
-          return response.data.products[0];
-        };
+        // // Function to retrieve the specific product by title
+        // const getProductByTitle = async (title) => {
+        //   const url = `https://${shop}/admin/api/2023-10/products.json?title=${encodeURIComponent(title)}`;
+        //   const response = await axios.get(url, { headers: apiRequestHeader });
+        //   return response.data.products[0];
+        // };
 
         // Get the specific product and create metafields for it
-        try {
-          const product = await getProductByTitle('Times Square SoHo Mini LED Projector');
+        // try {
+        //   const product = await getProductByTitle('Times Square SoHo Mini LED Projector');
 
-          if (product) {
-            console.log(product);
+        //   if (product) {
+        //     console.log(product);
 
-            await limiter.schedule(() => createAllMetafields(product.id));
-            console.log('Metafields created successfully for the product');
-          } else {
-            console.log('Product not found');
-          }
-        } catch (error) {
-          console.error('Error retrieving product:', error.response ? error.response.data : error.message);
-        }
+        //     await limiter.schedule(() => createAllMetafields(product.id));
+        //     console.log('Metafields created successfully for the product');
+        //   } else {
+        //     console.log('Product not found');
+        //   }
+        // } catch (error) {
+        //   console.error('Error retrieving product:', error.response ? error.response.data : error.message);
+        // }
 
-        res.send('App installed and metafields created successfully for the specific product');
+        res.send('App installed');
       })
       .catch((error) => {
         res.status(error.statusCode).send(error.error.error_description);
