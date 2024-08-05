@@ -6,7 +6,10 @@ const querystring = require('querystring');
 const nonce = require('nonce')();
 const request = require('request-promise');
 const { Shopify } = require('@shopify/shopify-api');
+const Shippo = require('shippo');
+const { count } = require('console');
 require('dotenv').config();
+
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -198,6 +201,8 @@ app.get('/shopify/callback', (req, res) => {
 // });
 
 
+const shippo = Shippo(process.env.SHIPPO_API_KEY);
+
 app.post('/shopify/rate', async (req, res) => {
   const { rate } = req.body;
   const { origin, destination, items, currency, locale } = rate;
@@ -312,59 +317,131 @@ app.post('/shopify/rate', async (req, res) => {
     const conversionFactor = 0.00220462;
     weight = weight * conversionFactor;
 
+    const addressFrom = {
+      name: shopResponse.data.name,
+      street1: origin.address1,
+      city: origin.city,
+      state: origin.province,
+      zip: origin.postal_code,
+      country: origin.country
+    }
+
+    const addressTo = {
+      name: destination.name,
+      street1: destination.address1,
+      city: destination.city,
+      state: destination.province,
+      zip: destination.postal_code,
+      country: destination.country
+    }
+
+    const parcels = itemsWithMetafields.map(item => ({
+      length: item.metafields['custom.length'] || 1,
+      width: item.metafields['custom.width'] || 1,
+      height: item.metafields['custom.height'] || 1,
+      distance_unit: 'in',
+      weight: item.grams * conversionFactor, // Shippo expects weight in pounds
+      mass_unit: 'lb'
+    }));
+
+    const shipment = await shippo.shipment.create({
+      address_from: addressFrom,
+      address_to: addressTo,
+      parcels: parcels,
+      async: false
+    });
+
 
     // Implement your shipping rate calculation logic here using itemsWithMetafields
     // For demonstration, let's assume we have a simple flat rate calculation
 
-    let calculatedRates = [];
+    const rates = shipment.rates;
 
     if (freeShipping && !commonProductExists) {
-      calculatedRates = {
-        "rates": [
-          {
-            "service_name": "Free Ground Shipping",
-            "service_code": "free-ground-shipping",
-            "total_price": "0", // Price in cents
-            "description": "'All products in your cart are elligible for free shipping.'",
-            "currency": "USD",
-            "min_delivery_date": "2024-08-01T14:48:45Z",
-            "max_delivery_date": "2024-08-03T14:48:45Z"
-          }
-        ]
-      }
+      rates.push({
+        amount: "0.00",
+        provider: "Free Ground Shipping",
+        servicelevel: {
+          name: "Free Ground Shipping",
+          token: "free-ground-shipping"
+        },
+        estimated_days: 2,
+        currency: "USD"
+      });
     }
 
     if (oversizedExists && !freeShipping && !commonProductExists) {
-      calculatedRates = {
-        "rates": [
-          {
-            "service_name": "Ships via Truck",
-            "service_code": "ships-via-truck",
-            "total_price": "0", // Price in cents
-            "description": "Items marked \"Oversized Ships via Truck\" DO NOT SHIP FREE & we will contact you with shipping rate.",
-            "currency": "USD",
-            "min_delivery_date": "2024-08-01T14:48:45Z",
-            "max_delivery_date": "2024-08-03T14:48:45Z"
-          }
-        ]
-      }
+      rates.push({
+        amount: "0.00",
+        provider: "Ships via Truck",
+        servicelevel: {
+          name: "Ships via Truck",
+          token: "ships-via-truck"
+        },
+        estimated_days: 2,
+        currency: "USD"
+      });
     }
 
-    calculatedRates = {
-      "rates": [
-        {
-          "service_name": "Standard Shipping",
-          "service_code": "standard",
-          "total_price": "50000", // Price in cents
-          "description": "Standard Shipping",
-          "currency": "USD",
-          "min_delivery_date": "2024-08-01T14:48:45Z",
-          "max_delivery_date": "2024-08-03T14:48:45Z"
-        }
-      ]
+    const calculatedRates = {
+      "rates": rates.map(rate => ({
+        "service_name": rate.servicelevel.name,
+        "service_code": rate.servicelevel.token,
+        "total_price": (parseFloat(rate.amount) * 100).toFixed(0), // converting to cents
+        "currency": rate.currency,
+        "min_delivery_date": rate.estimated_days ? new Date(Date.now() + rate.estimated_days * 24 * 60 * 60 * 1000).toISOString() : undefined,
+        "max_delivery_date": rate.estimated_days ? new Date(Date.now() + (rate.estimated_days + 2) * 24 * 60 * 60 * 1000).toISOString() : undefined,
+        "description": rate.provider
+      }))
     };
 
-    res.json(calculatedRate);
+    // if (freeShipping && !commonProductExists) {
+    //   calculatedRates = {
+    //     "rates": [
+    //       {
+    //         "service_name": "Free Ground Shipping",
+    //         "service_code": "free-ground-shipping",
+    //         "total_price": "0", // Price in cents
+    //         "description": "'All products in your cart are elligible for free shipping.'",
+    //         "currency": "USD",
+    //         "min_delivery_date": "2024-08-01T14:48:45Z",
+    //         "max_delivery_date": "2024-08-03T14:48:45Z"
+    //       }
+    //     ]
+    //   }
+    // }
+
+    // if (oversizedExists && !freeShipping && !commonProductExists) {
+    //   calculatedRates = {
+    //     "rates": [
+    //       {
+    //         "service_name": "Ships via Truck",
+    //         "service_code": "ships-via-truck",
+    //         "total_price": "0", // Price in cents
+    //         "description": "Items marked \"Oversized Ships via Truck\" DO NOT SHIP FREE & we will contact you with shipping rate.",
+    //         "currency": "USD",
+    //         "min_delivery_date": "2024-08-01T14:48:45Z",
+    //         "max_delivery_date": "2024-08-03T14:48:45Z"
+    //       }
+    //     ]
+    //   }
+    // }
+
+    // calculatedRates = {
+    //   "rates": [
+    //     {
+    //       "service_name": "Standard Shipping",
+    //       "service_code": "standard",
+    //       "total_price": "50000", // Price in cents
+    //       "description": "Standard Shipping",
+    //       "currency": "USD",
+    //       "min_delivery_date": "2024-08-01T14:48:45Z",
+    //       "max_delivery_date": "2024-08-03T14:48:45Z"
+    //     }
+    //   ]
+    // };
+
+    res.json(calculatedRates);
   } catch (error) {
     console.error('Error retrieving shop info:', error.response ? error.response.data : error.message);
     res.status(500).send('Error retrieving shop info');
