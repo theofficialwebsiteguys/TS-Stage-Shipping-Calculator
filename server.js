@@ -20,7 +20,7 @@ app.get('/shopify', (req, res) => {
   const shop = req.query.shop;
   if (shop) {
     const state = nonce();
-    const redirectUri = 'https://ts-shipping-calculator-ab26e219466a.herokuapp.com/shopify/callback';
+    const redirectUri = 'https://ts-stage-shipping-400122dbaabe.herokuapp.com//shopify/callback';
     const installUrl = 'https://' + shop + '/admin/oauth/authorize?client_id=' + process.env.SHOPIFY_API_KEY +
       '&scope=write_shipping,read_products' +
       '&state=' + state +
@@ -128,7 +128,7 @@ app.get('/shopify/callback', (req, res) => {
 
         // Store the access token in the in-memory store
         accessTokenStore[shop] = accessToken;
-       
+
         console.log("SHOP: " + shop);
         console.log("Access-Token1: " + accessTokenStore[shop]);
 
