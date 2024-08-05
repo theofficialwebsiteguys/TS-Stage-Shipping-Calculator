@@ -136,7 +136,7 @@ app.get('/shopify/callback', (req, res) => {
         const carrierServicePayload = {
           carrier_service: {
             name: "Custom Shipping Rate Calculator",
-            callback_url: "https://ts-shipping-calculator-ab26e219466a.herokuapp.com/shopify/rate",
+            callback_url: "https://ts-stage-shipping-400122dbaabe.herokuapp.com/shopify/rate",
             service_discovery: true
           }
         };
