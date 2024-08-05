@@ -252,9 +252,9 @@ app.post('/shopify/rate', async (req, res) => {
 
     console.log('Items with Metafields: ', itemsWithMetafields);
 
-    const height = JSON.parse(metafields['custom.height']);
-    const length = JSON.parse(metafields['custom.length']);
-    const width = JSON.parse(metafields['custom.width']);
+    const height = JSON.parse(itemsWithMetafields['custom.height']);
+    const length = JSON.parse(itemsWithMetafields['custom.length']);
+    const width = JSON.parse(itemsWithMetafields['custom.width']);
 
     console.log('Height:', height);
     console.log('Length:', length);
