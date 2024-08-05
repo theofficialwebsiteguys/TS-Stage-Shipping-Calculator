@@ -20,6 +20,6 @@
     "nonce": "^1.0.4",
     "querystring": "^0.2.1",
     "request-promise": "^4.2.6",
-    "shippo": "^2.6.1"
+    "shippo": "^1.0.0"
   }
 }
