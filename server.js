@@ -6,6 +6,7 @@ const querystring = require('querystring');
 const nonce = require('nonce')();
 const request = require('request-promise');
 const { Shopify } = require('@shopify/shopify-api');
+const Bottleneck = require('bottleneck');
 
 const shippo = require('shippo')(process.env.SHIPPO_API_KEY);
 
@@ -95,6 +96,11 @@ app.get('/shopify/callback', (req, res) => {
           console.error('Error creating carrier service:', error.response ? error.response.data : error.message);
         }
 
+        // Initialize the rate limiter
+        const limiter = new Bottleneck({
+          minTime: 500 // 2 requests per second
+        });
+
         // Get all products and create metafields for each product
         try {
           const productsResponse = await axios.get(`https://${shop}/admin/api/2023-10/products.json`, {
@@ -103,40 +109,30 @@ app.get('/shopify/callback', (req, res) => {
 
           const products = productsResponse.data.products;
 
-          const metafieldPromises = products.map(async (product) => {
+          const metafieldPromises = products.map((product) => {
             const productId = product.id;
 
             const metafieldsPayload = {
-              metafields: [
-                {
-                  namespace: 'global',
-                  key: 'oversized',
-                  value: 'false',
-                  value_type: 'string'
-                },
-                {
-                  namespace: 'global',
-                  key: 'free_shipping',
-                  value: 'false',
-                  value_type: 'string'
-                },
-                {
-                  namespace: 'global',
-                  key: 'free_ship_discount',
-                  value: 'false',
-                  value_type: 'string'
-                }
-              ]
+              metafield: {
+                namespace: 'global',
+                key: 'oversized',
+                value: 'false',
+                type: 'single_line_text_field'
+              }
             };
 
-            try {
-              await axios.post(`https://${shop}/admin/api/2023-10/products/${productId}/metafields.json`, metafieldsPayload, {
-                headers: apiRequestHeader
-              });
-              console.log(`Metafields created for product ${productId}`);
-            } catch (error) {
-              console.error(`Error creating metafields for product ${productId}:`, error.response ? error.response.data : error.message);
-            }
+            const createMetafield = async () => {
+              try {
+                await axios.post(`https://${shop}/admin/api/2023-10/products/${productId}/metafields.json`, metafieldsPayload, {
+                  headers: apiRequestHeader
+                });
+                console.log(`Metafields created for product ${productId}`);
+              } catch (error) {
+                console.error(`Error creating metafields for product ${productId}:`, error.response ? error.response.data : error.message);
+              }
+            };
+
+            return limiter.schedule(createMetafield);
           });
 
           await Promise.all(metafieldPromises);
