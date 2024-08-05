@@ -281,6 +281,7 @@ app.post('/shopify/rate', async (req, res) => {
     const addressTo = {
       name: destination.name,
       street1: destination.address1,
+      street2: '',
       city: destination.city,
       state: destination.province,
       zip: destination.postal_code,
