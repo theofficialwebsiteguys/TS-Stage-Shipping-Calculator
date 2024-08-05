@@ -289,9 +289,9 @@ app.post('/shopify/rate', async (req, res) => {
     console.log('Address To:', addressTo);
 
     const parcels = itemsWithMetafields.map(item => ({
-      length: item.metafields['custom.length'] || 1,
-      width: item.metafields['custom.width'] || 1,
-      height: item.metafields['custom.height'] || 1,
+      length: item.metafields['custom.length'].value || 1,
+      width: item.metafields['custom.width'].value || 1,
+      height: item.metafields['custom.height'].value || 1,
       distance_unit: 'in',
       weight: item.grams * 0.00220462, // Shippo expects weight in pounds
       mass_unit: 'lb'
