@@ -39,7 +39,8 @@ app.get('/shopify', (req, res) => {
 
 app.get('/shopify/callback', (req, res) => {
   const { shop, hmac, code, state } = req.query;
-  const stateCookie = cookie.parse(req.headers.cookie).state;
+  const cookies = req.headers.cookie ? cookie.parse(req.headers.cookie) : {};
+  const stateCookie = cookies.state;
 
   if (state !== stateCookie) {
     return res.status(403).send('Request origin cannot be verified');
@@ -140,37 +141,30 @@ app.get('/shopify/callback', (req, res) => {
           await Promise.all(metafieldPromises);
         };
 
-        // Function to retrieve all products with pagination
-        const getAllProducts = async () => {
-          let products = [];
-          let pageInfo = null;
-
-          do {
-            const url = `https://${shop}/admin/api/2023-10/products.json?limit=250` + (pageInfo ? `&page_info=${pageInfo}` : '');
-            const response = await axios.get(url, { headers: apiRequestHeader });
-
-            products = products.concat(response.data.products);
-            pageInfo = response.headers['link'] ? new URLSearchParams(response.headers['link'].split(';')[0].replace(/[<>]/g, '')).get('page_info') : null;
-          } while (pageInfo);
-
-          return products;
+        // Function to retrieve the specific product by title
+        const getProductByTitle = async (title) => {
+          const url = `https://${shop}/admin/api/2023-10/products.json?title=${encodeURIComponent(title)}`;
+          const response = await axios.get(url, { headers: apiRequestHeader });
+          return response.data.products[0];
         };
 
-        // Get all products and create metafields for each product
+        // Get the specific product and create metafields for it
         try {
-          const products = await getAllProducts();
+          const product = await getProductByTitle('Times Square SoHo Mini LED Projector');
 
-          console.log(products);
+          if (product) {
+            console.log(product);
 
-          const metafieldPromises = products.map(product => limiter.schedule(() => createAllMetafields(product.id)));
-
-          await Promise.all(metafieldPromises);
-          console.log('Metafields created successfully for all products');
+            await limiter.schedule(() => createAllMetafields(product.id));
+            console.log('Metafields created successfully for the product');
+          } else {
+            console.log('Product not found');
+          }
         } catch (error) {
-          console.error('Error retrieving products:', error.response ? error.response.data : error.message);
+          console.error('Error retrieving product:', error.response ? error.response.data : error.message);
         }
 
-        res.send('App installed and metafields created successfully');
+        res.send('App installed and metafields created successfully for the specific product');
       })
       .catch((error) => {
         res.status(error.statusCode).send(error.error.error_description);
