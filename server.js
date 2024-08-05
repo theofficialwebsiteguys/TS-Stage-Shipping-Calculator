@@ -252,13 +252,18 @@ app.post('/shopify/rate', async (req, res) => {
 
     console.log('Items with Metafields: ', itemsWithMetafields);
 
-    const height = JSON.parse(itemsWithMetafields['custom.height']);
-    const length = JSON.parse(itemsWithMetafields['custom.length']);
-    const width = JSON.parse(itemsWithMetafields['custom.width']);
+    itemsWithMetafields.forEach(item => {
+      const metafields = item.metafields;
 
-    console.log('Height:', height);
-    console.log('Length:', length);
-    console.log('Width:', width);
+      const height = JSON.parse(metafields['custom.height']);
+      const length = JSON.parse(metafields['custom.length']);
+      const width = JSON.parse(metafields['custom.width']);
+
+      console.log('Item:', item.name);
+      console.log('Height:', height);
+      console.log('Length:', length);
+      console.log('Width:', width);
+    });
     // Implement your shipping rate calculation logic here using itemsWithMetafields
     // For demonstration, let's assume we have a simple flat rate calculation
 
