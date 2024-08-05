@@ -195,6 +195,7 @@ app.post('/shopify/rate', async (req, res) => {
     const shopResponse = await axios.get(`https://${shop}/admin/api/2023-10/shop.json`, {
       headers: apiRequestHeader
     });
+    console.log('Shop Info:', shopResponse.data);
 
     const metafieldsPromises = items.map(async (item) => {
       const productId = item.product_id;
@@ -202,6 +203,8 @@ app.post('/shopify/rate', async (req, res) => {
         const metafieldsResponse = await axios.get(`https://${shop}/admin/api/2023-10/products/${productId}/metafields.json`, {
           headers: apiRequestHeader
         });
+
+        console.log(`Metafields response for product ${productId}:`, metafieldsResponse.data);
 
         const metafields = metafieldsResponse.data.metafields;
         const itemMetafields = {};
@@ -215,11 +218,13 @@ app.post('/shopify/rate', async (req, res) => {
 
         return { ...item, metafields: itemMetafields };
       } catch (error) {
+        console.error(`Error retrieving metafields for product ${productId}:`, error.response ? error.response.data : error.message);
         return { ...item, metafields: {} };
       }
     });
 
     const itemsWithMetafields = await Promise.all(metafieldsPromises);
+    console.log('Items with Metafields:', itemsWithMetafields);
 
     let totalOrder = 0;
     const freeShipOver = 29900;
@@ -264,13 +269,14 @@ app.post('/shopify/rate', async (req, res) => {
     weight *= 0.00220462; // Convert grams to pounds
 
     const addressFrom = {
-      name: shopResponse.data.name,
+      name: shopResponse.data.shop.name,
       street1: origin.address1,
       city: origin.city,
       state: origin.province,
       zip: origin.postal_code,
       country: origin.country
     };
+    console.log('Address From:', addressFrom);
 
     const addressTo = {
       name: destination.name,
@@ -280,6 +286,7 @@ app.post('/shopify/rate', async (req, res) => {
       zip: destination.postal_code,
       country: destination.country
     };
+    console.log('Address To:', addressTo);
 
     const parcels = itemsWithMetafields.map(item => ({
       length: item.metafields['custom.length'] || 1,
@@ -289,6 +296,7 @@ app.post('/shopify/rate', async (req, res) => {
       weight: item.grams * 0.00220462, // Shippo expects weight in pounds
       mass_unit: 'lb'
     }));
+    console.log('Parcels:', parcels);
 
     const shipment = await shippo.shipment.create({
       address_from: addressFrom,
@@ -296,8 +304,10 @@ app.post('/shopify/rate', async (req, res) => {
       parcels: parcels,
       async: false
     });
+    console.log('Shipment:', shipment);
 
     const rates = shipment.rates;
+    console.log('Rates:', rates);
 
     if (freeShipping && !commonProductExists) {
       rates.push({
@@ -323,6 +333,7 @@ app.post('/shopify/rate', async (req, res) => {
         "description": rate.provider
       }))
     };
+    console.log('Calculated Rates:', calculatedRates);
 
     res.json(calculatedRates);
   } catch (error) {
