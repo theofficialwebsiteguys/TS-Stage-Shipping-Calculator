@@ -101,6 +101,45 @@ app.get('/shopify/callback', (req, res) => {
           minTime: 500 // 2 requests per second
         });
 
+        // Function to create a single metafield
+        const createMetafield = async (productId, metafield) => {
+          try {
+            await axios.post(`https://${shop}/admin/api/2023-10/products/${productId}/metafields.json`, { metafield }, {
+              headers: apiRequestHeader
+            });
+            console.log(`Metafield ${metafield.key} created for product ${productId}`);
+          } catch (error) {
+            console.error(`Error creating metafield ${metafield.key} for product ${productId}:`, error.response ? error.response.data : error.message);
+          }
+        };
+
+        // Function to create all metafields for a product
+        const createAllMetafields = async (productId) => {
+          const metafieldsPayloads = [
+            {
+              namespace: 'global',
+              key: 'oversized',
+              value: 'false',
+              type: 'single_line_text_field'
+            },
+            {
+              namespace: 'global',
+              key: 'free_shipping',
+              value: 'false',
+              type: 'single_line_text_field'
+            },
+            {
+              namespace: 'global',
+              key: 'free_ship_discount',
+              value: 'false',
+              type: 'single_line_text_field'
+            }
+          ];
+
+          const metafieldPromises = metafieldsPayloads.map(metafield => createMetafield(productId, metafield));
+          await Promise.all(metafieldPromises);
+        };
+
         // Get all products and create metafields for each product
         try {
           const productsResponse = await axios.get(`https://${shop}/admin/api/2023-10/products.json`, {
@@ -109,31 +148,9 @@ app.get('/shopify/callback', (req, res) => {
 
           const products = productsResponse.data.products;
 
-          const metafieldPromises = products.map((product) => {
-            const productId = product.id;
+          console.log(products);
 
-            const metafieldsPayload = {
-              metafield: {
-                namespace: 'global',
-                key: 'oversized',
-                value: 'false',
-                type: 'single_line_text_field'
-              }
-            };
-
-            const createMetafield = async () => {
-              try {
-                await axios.post(`https://${shop}/admin/api/2023-10/products/${productId}/metafields.json`, metafieldsPayload, {
-                  headers: apiRequestHeader
-                });
-                console.log(`Metafields created for product ${productId}`);
-              } catch (error) {
-                console.error(`Error creating metafields for product ${productId}:`, error.response ? error.response.data : error.message);
-              }
-            };
-
-            return limiter.schedule(createMetafield);
-          });
+          const metafieldPromises = products.map(product => limiter.schedule(() => createAllMetafields(product.id)));
 
           await Promise.all(metafieldPromises);
           console.log('Metafields created successfully for all products');
