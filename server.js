@@ -6,7 +6,7 @@ const querystring = require('querystring');
 const nonce = require('nonce')();
 const request = require('request-promise');
 const { Shopify } = require('@shopify/shopify-api');
-const shippo = require('shippo')(process.env.SHIPPO_API_KEY);
+var shippo = require('shippo')(process.env.SHIPPO_API_KEY);
 const { count } = require('console');
 require('dotenv').config();
 
