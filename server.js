@@ -240,9 +240,9 @@ app.post('/shopify/rate', async (req, res) => {
 
     itemsWithMetafields.forEach(item => {
       const metafields = item.metafields;
-      const height = metafields['custom.height'] ? JSON.parse(metafields['custom.height']) : null;
-      const length = metafields['custom.length'] ? JSON.parse(metafields['custom.length']) : null;
-      const width = metafields['custom.width'] ? JSON.parse(metafields['custom.width']) : null;
+      const height = metafields['custom.height'] ? JSON.parse(metafields['custom.height']).value : null;
+      const length = metafields['custom.length'] ? JSON.parse(metafields['custom.length']).value : null;
+      const width = metafields['custom.width'] ? JSON.parse(metafields['custom.width']).value : null;
       const oversized = metafields['global.oversized'] ? JSON.parse(metafields['global.oversized']) : null;
       const freeShipping = metafields['global.free_shipping'] ? JSON.parse(metafields['global.free_shipping']) : null;
       const freeShipOverSized = metafields['global.free_ship_discount'] ? JSON.parse(metafields['global.free_ship_discount']) : null;
@@ -281,7 +281,6 @@ app.post('/shopify/rate', async (req, res) => {
     const addressTo = {
       name: destination.name,
       street1: destination.address1,
-      street2: '',
       city: destination.city,
       state: destination.province,
       zip: destination.postal_code,
