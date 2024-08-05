@@ -252,27 +252,108 @@ app.post('/shopify/rate', async (req, res) => {
 
     console.log('Items with Metafields: ', itemsWithMetafields);
 
+    let totalOrder = 0;
+    const freeShipOver = 29900;
+
+    itemsWithMetafields.forEach(item => {
+      totalOrder = totalOrder + item.price * item.quantity;
+    })
+
+    let weight = 0;
+    let freeShipping = false;
+    let oversizedExists = false
+    let commonProductExists = false
+
     itemsWithMetafields.forEach(item => {
       const metafields = item.metafields;
 
-      const height = JSON.parse(metafields['custom.height']);
-      const length = JSON.parse(metafields['custom.length']);
-      const width = JSON.parse(metafields['custom.width']);
+      // Check for and parse each metafield
+      const height = metafields['custom.height'] ? JSON.parse(metafields['custom.height']) : null;
+      const length = metafields['custom.length'] ? JSON.parse(metafields['custom.length']) : null;
+      const width = metafields['custom.width'] ? JSON.parse(metafields['custom.width']) : null;
+      const oversized = metafields['global.oversized'] ? JSON.parse(metafields['global.oversized']) : null;
+      const freeShipping = metafields['global.free_shipping'] ? JSON.parse(metafields['global.free_shipping']) : null;
+      const freeShipOverSized = metafields['global.free_ship_discount'] ? JSON.parse(metafields['global.free_ship_discount']) : null;
 
+      // Log the results
       console.log('Item:', item.name);
-      console.log('Height:', height);
-      console.log('Length:', length);
-      console.log('Width:', width);
+      if (height) {
+        console.log('Height:', height);
+      }
+      if (length) {
+        console.log('Length:', length);
+      }
+      if (width) {
+        console.log('Width:', width);
+      }
+      if (oversized) {
+        oversizedExists = true;
+      } else if (freeShipping || freeShipOverSized) {
+        if (totalOrder >= freeShipOver) {
+          freeShipping = true;
+        } else {
+          if (item.requires_shipping) {
+            commonProductExists = true;
+            weight = weight + item.grams * item.quantity;
+          }
+        }
+      } else {
+        if (item.requires_shipping) {
+          commonProductExists = true;
+          weight = weight + item.grams * item.quantity;
+        }
+      }
     });
+
+    // Converting Grams to LBS
+
+    const conversionFactor = 0.00220462;
+    weight = weight * conversionFactor;
+
+
     // Implement your shipping rate calculation logic here using itemsWithMetafields
     // For demonstration, let's assume we have a simple flat rate calculation
 
-    const calculatedRate = {
+    let calculatedRates = [];
+
+    if (freeShipping && !commonProductExists) {
+      calculatedRates = {
+        "rates": [
+          {
+            "service_name": "Free Ground Shipping",
+            "service_code": "free-ground-shipping",
+            "total_price": "0", // Price in cents
+            "description": "'All products in your cart are elligible for free shipping.'",
+            "currency": "USD",
+            "min_delivery_date": "2024-08-01T14:48:45Z",
+            "max_delivery_date": "2024-08-03T14:48:45Z"
+          }
+        ]
+      }
+    }
+
+    if (oversizedExists && !freeShipping && !commonProductExists) {
+      calculatedRates = {
+        "rates": [
+          {
+            "service_name": "Ships via Truck",
+            "service_code": "ships-via-truck",
+            "total_price": "0", // Price in cents
+            "description": "Items marked \"Oversized Ships via Truck\" DO NOT SHIP FREE & we will contact you with shipping rate.",
+            "currency": "USD",
+            "min_delivery_date": "2024-08-01T14:48:45Z",
+            "max_delivery_date": "2024-08-03T14:48:45Z"
+          }
+        ]
+      }
+    }
+
+    calculatedRates = {
       "rates": [
         {
           "service_name": "Standard Shipping",
           "service_code": "standard",
-          "total_price": "5000", // Price in cents
+          "total_price": "50000", // Price in cents
           "description": "Standard Shipping",
           "currency": "USD",
           "min_delivery_date": "2024-08-01T14:48:45Z",
