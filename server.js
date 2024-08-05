@@ -228,6 +228,9 @@ app.post('/shopify/rate', async (req, res) => {
 
     let totalOrder = 0;
     const freeShipOver = 29900;
+    let oversizedItem = null;
+    let hasFreeShippingItems = false;
+    let hasNonFreeShippingItems = false;
 
     itemsWithMetafields.forEach(item => {
       totalOrder += item.price * item.quantity;
@@ -235,7 +238,6 @@ app.post('/shopify/rate', async (req, res) => {
 
     let weight = 0;
     let freeShipping = false;
-    let oversizedExists = false;
     let commonProductExists = false;
 
     itemsWithMetafields.forEach(item => {
@@ -248,27 +250,19 @@ app.post('/shopify/rate', async (req, res) => {
       const freeShipOverSized = metafields['global.free_ship_discount'] ? JSON.parse(metafields['global.free_ship_discount']) : null;
 
       if (oversized) {
-        oversizedExists = true;
-      } else if (freeShipping || freeShipOverSized) {
-        if (totalOrder >= freeShipOver) {
-          freeShipping = true;
-        } else {
-          if (item.requires_shipping) {
-            commonProductExists = true;
-            weight += item.grams * item.quantity;
-          }
-        }
+        oversizedItem = item;
+      } 
+
+      if (freeShipping || freeShipOverSized) {
+        hasFreeShippingItems = true;
       } else {
         if (item.requires_shipping) {
+          hasNonFreeShippingItems = true;
           commonProductExists = true;
           weight += item.grams * item.quantity;
         }
       }
     });
-
-    if (oversizedExists) {
-      return res.status(400).send('Oversized Item: Shipping Rate Calculated Fullfillment.');
-    }
 
     weight *= 0.00220462; // Convert grams to pounds
 
@@ -292,7 +286,7 @@ app.post('/shopify/rate', async (req, res) => {
     };
     console.log('Address To:', addressTo);
 
-    const parcels = itemsWithMetafields
+    let parcels = itemsWithMetafields
       .filter(item => !item.metafields['global.free_shipping'] && !item.metafields['global.free_ship_discount'])
       .map(item => ({
         length: item.metafields['custom.length'] ? JSON.parse(item.metafields['custom.length']).value : 10,
@@ -304,32 +298,21 @@ app.post('/shopify/rate', async (req, res) => {
       }));
     console.log('Parcels:', parcels);
 
-    const shipment = await shippo.shipment.create({
-      address_from: addressFrom,
-      address_to: addressTo,
-      parcels: parcels,
-      async: false
-    });
-    console.log('Shipment:', shipment);
-
-    const rates = shipment.rates;
-    console.log('Rates:', rates);
-
-    if (freeShipping && !commonProductExists) {
-      rates.push({
-        amount: "0.00",
-        provider: "Free Ground Shipping",
-        servicelevel: {
-          name: "Free Ground Shipping",
-          token: "free-ground-shipping"
-        },
-        estimated_days: 2,
-        currency: "USD"
+    let rates;
+    let calculatedRates = [];
+    if (parcels.length > 0) {
+      const shipment = await shippo.shipment.create({
+        address_from: addressFrom,
+        address_to: addressTo,
+        parcels: parcels,
+        async: false
       });
-    }
+      console.log('Shipment:', shipment);
 
-    const calculatedRates = {
-      "rates": rates.map(rate => ({
+      rates = shipment.rates;
+      console.log('Rates:', rates);
+
+      calculatedRates = rates.map(rate => ({
         "service_name": rate.servicelevel.name,
         "service_code": rate.servicelevel.token,
         "total_price": (parseFloat(rate.amount) * 100).toFixed(0), // converting to cents
@@ -337,11 +320,32 @@ app.post('/shopify/rate', async (req, res) => {
         "min_delivery_date": rate.estimated_days ? new Date(Date.now() + rate.estimated_days * 24 * 60 * 60 * 1000).toISOString() : undefined,
         "max_delivery_date": rate.estimated_days ? new Date(Date.now() + (rate.estimated_days + 2) * 24 * 60 * 60 * 1000).toISOString() : undefined,
         "description": rate.provider
-      }))
-    };
+      }));
+    }
+
+    if (hasFreeShippingItems && !hasNonFreeShippingItems) {
+      calculatedRates.push({
+        service_name: "Free Shipping",
+        service_code: "free_shipping",
+        total_price: "0",
+        currency: "USD",
+        min_delivery_date: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
+        max_delivery_date: new Date(Date.now() + 4 * 24 * 60 * 60 * 1000).toISOString(),
+        description: "All items are eligible for free shipping"
+      });
+    }
+
     console.log('Calculated Rates:', calculatedRates);
 
-    res.json(calculatedRates);
+    let response = {
+      rates: calculatedRates
+    };
+
+    if (oversizedItem) {
+      response.message = 'Oversized Item: Shipping Rate Calculated Fulfillment.';
+    }
+
+    res.json(response);
   } catch (error) {
     console.error('Error retrieving shop info:', error.response ? error.response.data : error.message);
     res.status(500).send('Error retrieving shop info');
