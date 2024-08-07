@@ -7,6 +7,8 @@ const nonce = require('nonce')();
 const request = require('request-promise');
 const { Shopify } = require('@shopify/shopify-api');
 const Bottleneck = require('bottleneck');
+const NodeCache = require('node-cache');
+const accessTokenCache = new NodeCache(); // No TTL by default
 
 const shippo = require('shippo')(process.env.SHIPPO_API_KEY);
 
@@ -67,11 +69,11 @@ app.get('/shopify/callback', (req, res) => {
       .then(async (accessTokenResponse) => {
         const accessToken = accessTokenResponse.access_token;
 
-        // Store the access token in the in-memory store
-        accessTokenStore[shop] = { accessToken, shopName: shop };
+         // Store the access token in node-cache without expiration
+        accessTokenCache.set('AccessToken', accessToken, 0); // 0 means no expiration
 
-        console.log("SHOP: " + shop.shopName);
-        console.log("Access-Token1: " + accessTokenStore[shop].accessToken);
+        console.log("SHOP: " + shop);
+        console.log("Access-Token: " + accessToken);
 
         const carrierServiceRequestUrl = `https://${shop}/admin/carrier_services.json`;
         const carrierServicePayload = {
@@ -179,18 +181,15 @@ app.post('/shopify/rate', async (req, res) => {
   const { rate } = req.body;
   const { origin, destination, items, currency, locale } = rate;
 
-  const shopInfo = accessTokenStore[shop];
-
-
-
   // const shop = 'ts-stage-testing.myshopify.com'; // You should retrieve this dynamically if needed
   // const accessToken = accessTokenStore[shop]; // Retrieve the access token from the store
 
-  if (!shopInfo || !shopInfo.accessToken) {
+  const accessToken = accessTokenCache.get('AccessToken');
+
+  if (!accessToken) {
     return res.status(403).send('Access token not found for the shop');
   }
 
-  const accessToken = shopInfo.accessToken;
   const apiRequestHeader = {
     'X-Shopify-Access-Token': accessToken,
     'Content-Type': 'application/json'
