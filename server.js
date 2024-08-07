@@ -4,8 +4,12 @@ const cookie = require('cookie');
 const crypto = require('crypto');
 const querystring = require('querystring');
 const nonce = require('nonce')();
+const request = require('request-promise');
 const { Shopify } = require('@shopify/shopify-api');
+const Bottleneck = require('bottleneck');
 const NodeCache = require('node-cache');
+const accessTokenCache = new NodeCache(); // No TTL by default
+
 const shippo = require('shippo')(process.env.SHIPPO_API_KEY);
 
 require('dotenv').config();
@@ -16,23 +20,26 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-const accessTokenCache = new NodeCache(); // No TTL by default
+let accessTokenStore = {}; // In-memory store
 
 app.get('/shopify', (req, res) => {
   const shop = req.query.shop;
   if (shop) {
     const state = nonce();
-    const redirectUri = `${process.env.HOST}/shopify/callback`;
-    const installUrl = `https://${shop}/admin/oauth/authorize?client_id=${process.env.SHOPIFY_API_KEY}&scope=write_shipping,read_products,write_products&state=${state}&redirect_uri=${redirectUri}`;
+    const redirectUri = 'https://ts-shipping-calculator-ab26e219466a.herokuapp.com/shopify/callback';
+    const installUrl = 'https://' + shop + '/admin/oauth/authorize?client_id=' + process.env.SHOPIFY_API_KEY +
+      '&scope=write_shipping,read_products,write_products' +
+      '&state=' + state +
+      '&redirect_uri=' + redirectUri;
 
     res.cookie('state', state);
     res.redirect(installUrl);
   } else {
-    res.status(400).send("Missing shop parameter.");
+    return res.status(400).send("Missing shop parameter.");
   }
 });
 
-app.get('/shopify/callback', async (req, res) => {
+app.get('/shopify/callback', (req, res) => {
   const { shop, hmac, code, state } = req.query;
   const cookies = req.headers.cookie ? cookie.parse(req.headers.cookie) : {};
   const stateCookie = cookies.state;
@@ -43,7 +50,7 @@ app.get('/shopify/callback', async (req, res) => {
 
   if (shop && hmac && code) {
     const map = { ...req.query };
-    delete map.hmac;
+    delete map['hmac'];
     const message = querystring.stringify(map);
     const generatedHash = crypto.createHmac('sha256', process.env.SHOPIFY_API_SECRET).update(message).digest('hex');
 
@@ -51,34 +58,54 @@ app.get('/shopify/callback', async (req, res) => {
       return res.status(400).send('HMAC validation failed');
     }
 
-    try {
-      const accessTokenResponse = await axios.post(`https://${shop}/admin/oauth/access_token`, {
-        client_id: process.env.SHOPIFY_API_KEY,
-        client_secret: process.env.SHOPIFY_API_SECRET,
-        code
-      });
+    const accessTokenRequestUrl = `https://${shop}/admin/oauth/access_token`;
+    const accessTokenPayload = {
+      client_id: process.env.SHOPIFY_API_KEY,
+      client_secret: process.env.SHOPIFY_API_SECRET,
+      code
+    };
 
-      const accessToken = accessTokenResponse.data.access_token;
-      accessTokenCache.set('AccessToken', accessToken);
-      accessTokenCache.set('Shop', shop);
+    request.post(accessTokenRequestUrl, { json: accessTokenPayload })
+      .then(async (accessTokenResponse) => {
+        const accessToken = accessTokenResponse.access_token;
 
-      await axios.post(`https://${shop}/admin/carrier_services.json`, {
-        carrier_service: {
-          name: "Custom Shipping Rate Calculator",
-          callback_url: `${process.env.HOST}/shopify/rate`,
-          service_discovery: true
-        }
-      }, {
-        headers: {
+         // Store the access token in node-cache without expiration
+        accessTokenCache.set('AccessToken', accessToken, 0); // 0 means no expiration
+        accessTokenCache.set('Shop', shop, 0); // 0 means no expiration
+
+        console.log("SHOP: " + shop);
+        console.log("Access-Token: " + accessToken);
+
+        const carrierServiceRequestUrl = `https://${shop}/admin/carrier_services.json`;
+        const carrierServicePayload = {
+          carrier_service: {
+            name: "Custom Shipping Rate Calculator",
+            callback_url: "https://ts-shipping-calculator-ab26e219466a.herokuapp.com/shopify/rate",
+            service_discovery: true
+          }
+        };
+
+        const apiRequestHeader = {
           'X-Shopify-Access-Token': accessToken,
           'Content-Type': 'application/json'
+        };
+
+        try {
+          await request.post(carrierServiceRequestUrl, {
+            headers: apiRequestHeader,
+            json: carrierServicePayload
+          });
+          console.log('Carrier service created successfully');
+        } catch (error) {
+          console.error('Error creating carrier service:', error.response ? error.response.data : error.message);
         }
+
+        res.send('App installed');
+      })
+      .catch((error) => {
+        res.status(error.statusCode).send(error.error.error_description);
       });
 
-      res.send('App installed');
-    } catch (error) {
-      res.status(error.response.status).send(error.response.data.error_description);
-    }
   } else {
     res.status(400).send('Required parameters missing');
   }
@@ -86,32 +113,39 @@ app.get('/shopify/callback', async (req, res) => {
 
 app.post('/shopify/rate', async (req, res) => {
   const { rate } = req.body;
-  const { origin, destination, items } = rate;
+  const { origin, destination, items, currency, locale } = rate;
+
 
   const accessToken = accessTokenCache.get('AccessToken');
   const shop = accessTokenCache.get('Shop');
+
+
+  console.log("Shop: " + shop);
+  console.log("Token: " + accessToken);
 
   if (!accessToken) {
     return res.status(403).send('Access token not found for the shop');
   }
 
+  const apiRequestHeader = {
+    'X-Shopify-Access-Token': accessToken,
+    'Content-Type': 'application/json'
+  };
+
   try {
     const shopResponse = await axios.get(`https://${shop}/admin/api/2023-10/shop.json`, {
-      headers: {
-        'X-Shopify-Access-Token': accessToken,
-        'Content-Type': 'application/json'
-      }
+      headers: apiRequestHeader
     });
+    console.log('Shop Info:', shopResponse.data);
 
     const metafieldsPromises = items.map(async (item) => {
       const productId = item.product_id;
       try {
         const metafieldsResponse = await axios.get(`https://${shop}/admin/api/2023-10/products/${productId}/metafields.json`, {
-          headers: {
-            'X-Shopify-Access-Token': accessToken,
-            'Content-Type': 'application/json'
-          }
+          headers: apiRequestHeader
         });
+
+        console.log(`Metafields response for product ${productId}:`, metafieldsResponse.data);
 
         const metafields = metafieldsResponse.data.metafields;
         const itemMetafields = {};
@@ -125,37 +159,51 @@ app.post('/shopify/rate', async (req, res) => {
 
         return { ...item, metafields: itemMetafields };
       } catch (error) {
+        console.error(`Error retrieving metafields for product ${productId}:`, error.response ? error.response.data : error.message);
         return { ...item, metafields: {} };
       }
     });
 
     const itemsWithMetafields = await Promise.all(metafieldsPromises);
+    console.log('Items with Metafields:', itemsWithMetafields);
 
     let totalOrder = 0;
+    const freeShipOver = 29900;
     let oversizedItem = false;
     let hasFreeShippingItems = false;
     let hasNonFreeShippingItems = false;
 
     itemsWithMetafields.forEach(item => {
       totalOrder += item.price * item.quantity;
+    });
 
+    let weight = 0;
+    let freeShipping = false;
+    let commonProductExists = false;
+
+    //Checking for oversized & free shipping
+    itemsWithMetafields.forEach(item => {
       const metafields = item.metafields;
-      if (metafields['global.oversized']) {
+      const height = metafields['custom.height'] ? JSON.parse(metafields['custom.height']).value : null;
+      const length = metafields['custom.length'] ? JSON.parse(metafields['custom.length']).value : null;
+      const width = metafields['custom.width'] ? JSON.parse(metafields['custom.width']).value : null;
+      const oversized = metafields['global.oversized'] ? JSON.parse(metafields['global.oversized']) : null;
+      const freeShipping = metafields['global.free_shipping'] ? JSON.parse(metafields['global.free_shipping']) : null;
+      const freeShipOverSized = metafields['global.free_ship_discount'] ? JSON.parse(metafields['global.free_ship_discount']) : null;
+
+      if (oversized) {
         oversizedItem = true;
-      }
-      if (metafields['global.free_shipping'] || metafields['global.free_ship_discount']) {
+      } 
+
+      if (freeShipping || freeShipOverSized) {
         hasFreeShippingItems = true;
       } else {
-        hasNonFreeShippingItems = true;
+          hasNonFreeShippingItems = true;
+          weight += item.grams * item.quantity;
       }
     });
 
-    let weight = itemsWithMetafields.reduce((acc, item) => {
-      if (!item.metafields['global.free_shipping'] && !item.metafields['global.free_ship_discount']) {
-        return acc + item.grams * item.quantity * 0.00220462; // Convert grams to pounds
-      }
-      return acc;
-    }, 0);
+    weight *= 0.00220462; // Convert grams to pounds
 
     const addressFrom = {
       name: shopResponse.data.shop.name,
@@ -165,6 +213,7 @@ app.post('/shopify/rate', async (req, res) => {
       zip: origin.postal_code,
       country: origin.country
     };
+    console.log('Address From:', addressFrom);
 
     const addressTo = {
       name: destination.name,
@@ -174,8 +223,9 @@ app.post('/shopify/rate', async (req, res) => {
       zip: destination.postal_code,
       country: destination.country
     };
+    console.log('Address To:', addressTo);
 
-    const parcels = itemsWithMetafields
+    let parcels = itemsWithMetafields
       .filter(item => !item.metafields['global.free_shipping'] && !item.metafields['global.free_ship_discount'])
       .map(item => ({
         length: item.metafields['custom.length'] ? JSON.parse(item.metafields['custom.length']).value : 10,
@@ -185,9 +235,10 @@ app.post('/shopify/rate', async (req, res) => {
         weight: item.grams * 0.00220462, // Shippo expects weight in pounds
         mass_unit: 'lb'
       }));
+    console.log('Parcels:', parcels);
 
+    let rates;
     let calculatedRates = [];
-
     if (parcels.length > 0) {
       const shipment = await shippo.shipment.create({
         address_from: addressFrom,
@@ -195,15 +246,19 @@ app.post('/shopify/rate', async (req, res) => {
         parcels: parcels,
         async: false
       });
+      console.log('Shipment:', shipment);
 
-      calculatedRates = shipment.rates.map(rate => ({
-        service_name: oversizedItem ? `${rate.servicelevel.name} - Oversized Item Included, shipping rates may change on fulfillment` : rate.servicelevel.name,
-        service_code: rate.servicelevel.token,
-        total_price: (parseFloat(rate.amount) * 100).toFixed(0), // converting to cents
-        currency: rate.currency,
-        min_delivery_date: rate.estimated_days ? new Date(Date.now() + rate.estimated_days * 24 * 60 * 60 * 1000).toISOString() : undefined,
-        max_delivery_date: rate.estimated_days ? new Date(Date.now() + (rate.estimated_days + 2) * 24 * 60 * 60 * 1000).toISOString() : undefined,
-        description: rate.provider
+      rates = shipment.rates;
+      console.log('Rates:', rates);
+
+      calculatedRates = rates.map(rate => ({
+        "service_name": oversizedItem ? `${rate.servicelevel.name} - Oversized Item Included, shipping rates may change on fullfillment` : rate.servicelevel.name,
+        "service_code": rate.servicelevel.token,
+        "total_price": (parseFloat(rate.amount) * 100).toFixed(0), // converting to cents
+        "currency": rate.currency,
+        "min_delivery_date": rate.estimated_days ? new Date(Date.now() + rate.estimated_days * 24 * 60 * 60 * 1000).toISOString() : undefined,
+        "max_delivery_date": rate.estimated_days ? new Date(Date.now() + (rate.estimated_days + 2) * 24 * 60 * 60 * 1000).toISOString() : undefined,
+        "description": rate.provider
       }));
     }
 
@@ -219,8 +274,15 @@ app.post('/shopify/rate', async (req, res) => {
       });
     }
 
-    res.json({ rates: calculatedRates });
+    console.log('Calculated Rates:', calculatedRates);
+
+    let response = {
+      rates: calculatedRates
+    };
+
+    res.json(response);
   } catch (error) {
+    console.error('Error retrieving shop info:', error.response ? error.response.data : error.message);
     res.status(500).send('Error retrieving shop info');
   }
 });
