@@ -71,6 +71,7 @@ app.get('/shopify/callback', (req, res) => {
 
          // Store the access token in node-cache without expiration
         accessTokenCache.set('AccessToken', accessToken, 0); // 0 means no expiration
+        accessTokenCache.set('Shop', shop, 0); // 0 means no expiration
 
         console.log("SHOP: " + shop);
         console.log("Access-Token: " + accessToken);
@@ -185,7 +186,10 @@ app.post('/shopify/rate', async (req, res) => {
   // const accessToken = accessTokenStore[shop]; // Retrieve the access token from the store
 
   const accessToken = accessTokenCache.get('AccessToken');
+  const shop = accessTokenCache.get('Shop');
 
+
+  console.log("Shop: " + shop);
   console.log("Token: " + accessToken);
 
   if (!accessToken) {
