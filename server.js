@@ -179,23 +179,32 @@ app.post('/shopify/rate', async (req, res) => {
   const { rate } = req.body;
   const { origin, destination, items, currency, locale } = rate;
 
-  const shop = 'ts-stage-testing.myshopify.com'; // You should retrieve this dynamically if needed
-  const accessToken = accessTokenStore[shop]; // Retrieve the access token from the store
+  // const shop = 'ts-stage-testing.myshopify.com'; // You should retrieve this dynamically if needed
+  // const accessToken = accessTokenStore[shop]; // Retrieve the access token from the store
 
-  if (!accessToken) {
-    return res.status(403).send('Access token not found for the shop');
-  }
+  // if (!accessToken) {
+  //   return res.status(403).send('Access token not found for the shop');
+  // }
+
+  console.log("Access Toekn: " + accessToken);
 
   const apiRequestHeader = {
     'X-Shopify-Access-Token': accessToken,
     'Content-Type': 'application/json'
   };
 
+  console.log("api Request Header: " + apiRequestHeader['X-Shopify-Access-Token']);
+
   try {
     const shopResponse = await axios.get(`https://${shop}/admin/api/2023-10/shop.json`, {
       headers: apiRequestHeader
     });
     console.log('Shop Info:', shopResponse.data);
+    const accessToken = accessTokenStore[shopResponse.data.domain]; // Retrieve the access token from the store
+
+    if (!accessToken) {
+      return res.status(403).send('Access token not found for the shop');
+    }
 
     const metafieldsPromises = items.map(async (item) => {
       const productId = item.product_id;
@@ -204,7 +213,7 @@ app.post('/shopify/rate', async (req, res) => {
           headers: apiRequestHeader
         });
 
-        console.log(`Metafields response for product ${productId}:`, metafieldsResponse.data);
+        //console.log(`Metafields response for product ${productId}:`, metafieldsResponse.data);
 
         const metafields = metafieldsResponse.data.metafields;
         const itemMetafields = {};
@@ -224,7 +233,7 @@ app.post('/shopify/rate', async (req, res) => {
     });
 
     const itemsWithMetafields = await Promise.all(metafieldsPromises);
-    console.log('Items with Metafields:', itemsWithMetafields);
+    //console.log('Items with Metafields:', itemsWithMetafields);
 
     let totalOrder = 0;
     const freeShipOver = 29900;
@@ -284,7 +293,7 @@ app.post('/shopify/rate', async (req, res) => {
       zip: destination.postal_code,
       country: destination.country
     };
-    console.log('Address To:', addressTo);
+    //console.log('Address To:', addressTo);
 
     let parcels = itemsWithMetafields
       .filter(item => !item.metafields['global.free_shipping'] && !item.metafields['global.free_ship_discount'])
@@ -296,7 +305,7 @@ app.post('/shopify/rate', async (req, res) => {
         weight: item.grams * 0.00220462, // Shippo expects weight in pounds
         mass_unit: 'lb'
       }));
-    console.log('Parcels:', parcels);
+    //console.log('Parcels:', parcels);
 
     let rates;
     let calculatedRates = [];
@@ -310,7 +319,7 @@ app.post('/shopify/rate', async (req, res) => {
       console.log('Shipment:', shipment);
 
       rates = shipment.rates;
-      console.log('Rates:', rates);
+      //console.log('Rates:', rates);
 
       calculatedRates = rates.map(rate => ({
         "service_name": rate.servicelevel.name,
@@ -335,7 +344,7 @@ app.post('/shopify/rate', async (req, res) => {
       });
     }
 
-    console.log('Calculated Rates:', calculatedRates);
+    //console.log('Calculated Rates:', calculatedRates);
 
     let response = {
       rates: calculatedRates
