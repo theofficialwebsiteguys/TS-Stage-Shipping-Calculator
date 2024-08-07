@@ -295,7 +295,7 @@ app.post('/shopify/rate', async (req, res) => {
     console.log('Address To:', addressTo);
 
     let parcels = itemsWithMetafields
-      .filter(item => !item.metafields['global.free_shipping'] && !item.metafields['global.free_ship_discount'])
+      .filter(item => item.metafields['global.free_shipping'] && item.metafields['global.free_ship_discount'])
       .map(item => ({
         length: item.metafields['custom.length'] ? JSON.parse(item.metafields['custom.length']).value : 10,
         width: item.metafields['custom.width'] ? JSON.parse(item.metafields['custom.width']).value : 10,
