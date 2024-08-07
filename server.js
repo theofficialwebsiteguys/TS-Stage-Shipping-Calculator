@@ -186,7 +186,7 @@ app.post('/shopify/rate', async (req, res) => {
   //   return res.status(403).send('Access token not found for the shop');
   // }
 
-  console.log("Access Toekn: " + accessToken);
+  //console.log("Access Toekn: " + accessToken);
 
   const apiRequestHeader = {
     'X-Shopify-Access-Token': accessToken,
