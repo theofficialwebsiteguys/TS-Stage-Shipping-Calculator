@@ -238,7 +238,7 @@ app.post('/shopify/rate', async (req, res) => {
 
     let totalOrder = 0;
     const freeShipOver = 29900;
-    let oversizedItem = null;
+    let oversizedItem = false;
     let hasFreeShippingItems = false;
     let hasNonFreeShippingItems = false;
 
@@ -250,6 +250,7 @@ app.post('/shopify/rate', async (req, res) => {
     let freeShipping = false;
     let commonProductExists = false;
 
+    //Checking for oversized & free shipping
     itemsWithMetafields.forEach(item => {
       const metafields = item.metafields;
       const height = metafields['custom.height'] ? JSON.parse(metafields['custom.height']).value : null;
@@ -260,17 +261,14 @@ app.post('/shopify/rate', async (req, res) => {
       const freeShipOverSized = metafields['global.free_ship_discount'] ? JSON.parse(metafields['global.free_ship_discount']) : null;
 
       if (oversized) {
-        oversizedItem = item;
+        oversizedItem = true;
       } 
 
       if (freeShipping || freeShipOverSized) {
         hasFreeShippingItems = true;
       } else {
-        if (item.requires_shipping) {
           hasNonFreeShippingItems = true;
-          commonProductExists = true;
           weight += item.grams * item.quantity;
-        }
       }
     });
 
@@ -323,7 +321,7 @@ app.post('/shopify/rate', async (req, res) => {
       console.log('Rates:', rates);
 
       calculatedRates = rates.map(rate => ({
-        "service_name": rate.servicelevel.name,
+        "service_name": oversizedItem ? `${rate.servicelevel.name} - Oversized Item Included, shipping rates may change on fullfillment` : rate.servicelevel.name,
         "service_code": rate.servicelevel.token,
         "total_price": (parseFloat(rate.amount) * 100).toFixed(0), // converting to cents
         "currency": rate.currency,
@@ -351,9 +349,9 @@ app.post('/shopify/rate', async (req, res) => {
       rates: calculatedRates
     };
 
-    if (oversizedItem) {
-      response.message = 'Oversized Item: Shipping Rate Calculated Fulfillment.';
-    }
+    // if (oversizedItem) {
+    //   response.message = 'Oversized Item: Shipping Rate Calculated Fulfillment.';
+    // }
 
     res.json(response);
   } catch (error) {
