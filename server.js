@@ -113,10 +113,13 @@ app.get('/shopify/callback', (req, res) => {
 
 app.post('/shopify/rate', async (req, res) => {
   const { rate } = req.body;
-  const { origin, destination, items } = rate;
+  const { origin, destination, items, currency, locale } = rate;
 
   const accessToken = accessTokenCache.get('AccessToken');
   const shop = accessTokenCache.get('Shop');
+
+  console.log("Shop: " + shop);
+  console.log("Token: " + accessToken);
 
   if (!accessToken) {
     return res.status(403).send('Access token not found for the shop');
@@ -131,6 +134,7 @@ app.post('/shopify/rate', async (req, res) => {
     const shopResponse = await axios.get(`https://${shop}/admin/api/2023-10/shop.json`, {
       headers: apiRequestHeader
     });
+    console.log('Shop Info:', shopResponse.data);
 
     const metafieldsPromises = items.map(async (item) => {
       const productId = item.product_id;
@@ -138,6 +142,8 @@ app.post('/shopify/rate', async (req, res) => {
         const metafieldsResponse = await axios.get(`https://${shop}/admin/api/2023-10/products/${productId}/metafields.json`, {
           headers: apiRequestHeader
         });
+
+        console.log(`Metafields response for product ${productId}:`, metafieldsResponse.data);
 
         const metafields = metafieldsResponse.data.metafields;
         const itemMetafields = {};
@@ -151,13 +157,16 @@ app.post('/shopify/rate', async (req, res) => {
 
         return { ...item, metafields: itemMetafields };
       } catch (error) {
+        console.error(`Error retrieving metafields for product ${productId}:`, error.response ? error.response.data : error.message);
         return { ...item, metafields: {} };
       }
     });
 
     const itemsWithMetafields = await Promise.all(metafieldsPromises);
+    console.log('Items with Metafields:', itemsWithMetafields);
 
     let totalOrder = 0;
+    const freeShipOver = 29900;
     let oversizedItem = false;
     let hasFreeShippingItems = false;
     let hasNonFreeShippingItems = false;
@@ -166,34 +175,33 @@ app.post('/shopify/rate', async (req, res) => {
       totalOrder += item.price * item.quantity;
     });
 
-    let totalWeight = 0;
-    let combinedParcelDimensions = { length: 0, width: 0, height: 0 };
+    let weight = 0;
+    let freeShipping = false;
+    let commonProductExists = false;
 
+    //Checking for oversized & free shipping
     itemsWithMetafields.forEach(item => {
       const metafields = item.metafields;
-      const height = metafields['custom.height'] ? JSON.parse(metafields['custom.height']).value : 0;
-      const length = metafields['custom.length'] ? JSON.parse(metafields['custom.length']).value : 0;
-      const width = metafields['custom.width'] ? JSON.parse(metafields['custom.width']).value : 0;
-      const oversized = metafields['global.oversized'] ? JSON.parse(metafields['global.oversized']) : false;
-      const freeShipping = metafields['global.free_shipping'] ? JSON.parse(metafields['global.free_shipping']) : false;
-      const freeShipOverSized = metafields['global.free_ship_discount'] ? JSON.parse(metafields['global.free_ship_discount']) : false;
+      const height = metafields['custom.height'] ? JSON.parse(metafields['custom.height']).value : null;
+      const length = metafields['custom.length'] ? JSON.parse(metafields['custom.length']).value : null;
+      const width = metafields['custom.width'] ? JSON.parse(metafields['custom.width']).value : null;
+      const oversized = metafields['global.oversized'] ? JSON.parse(metafields['global.oversized']) : null;
+      const freeShipping = metafields['global.free_shipping'] ? JSON.parse(metafields['global.free_shipping']) : null;
+      const freeShipOverSized = metafields['global.free_ship_discount'] ? JSON.parse(metafields['global.free_ship_discount']) : null;
 
       if (oversized) {
         oversizedItem = true;
-      }
+      } 
 
       if (freeShipping || freeShipOverSized) {
         hasFreeShippingItems = true;
       } else {
         hasNonFreeShippingItems = true;
-        totalWeight += item.grams * item.quantity;
-        combinedParcelDimensions.length += length * item.quantity;
-        combinedParcelDimensions.width += width * item.quantity;
-        combinedParcelDimensions.height += height * item.quantity;
+        weight += item.grams * item.quantity;
       }
     });
 
-    totalWeight *= 0.00220462; // Convert grams to pounds
+    weight *= 0.00220462; // Convert grams to pounds
 
     const addressFrom = {
       name: shopResponse.data.shop.name,
@@ -203,6 +211,7 @@ app.post('/shopify/rate', async (req, res) => {
       zip: origin.postal_code,
       country: origin.country
     };
+    console.log('Address From:', addressFrom);
 
     const addressTo = {
       name: destination.name,
@@ -212,20 +221,34 @@ app.post('/shopify/rate', async (req, res) => {
       zip: destination.postal_code,
       country: destination.country
     };
+    console.log('Address To:', addressTo);
 
+    // Modify parcels creation to account for quantity
     let parcels = [];
-
-    if (hasNonFreeShippingItems) {
-      parcels.push({
-        length: combinedParcelDimensions.length || 10,
-        width: combinedParcelDimensions.width || 10,
-        height: combinedParcelDimensions.height || 10,
-        distance_unit: 'in',
-        weight: totalWeight,
-        mass_unit: 'lb'
+    itemsWithMetafields
+      .filter(item => {
+        const metafields = item.metafields;
+        const freeShipping = metafields['global.free_shipping'] ? JSON.parse(metafields['global.free_shipping']) : false;
+        const freeShipOverSized = metafields['global.free_ship_discount'] ? JSON.parse(metafields['global.free_ship_discount']) : false;
+        return !freeShipping && !freeShipOverSized;
+      })
+      .forEach(item => {
+        const metafields = item.metafields;
+        const parcel = {
+          length: metafields['custom.length'] ? JSON.parse(metafields['custom.length']).value : 10,
+          width: metafields['custom.width'] ? JSON.parse(metafields['custom.width']).value : 10,
+          height: metafields['custom.height'] ? JSON.parse(metafields['custom.height']).value : 10,
+          distance_unit: 'in',
+          weight: item.grams * 0.00220462, // Shippo expects weight in pounds
+          mass_unit: 'lb'
+        };
+        for (let i = 0; i < item.quantity; i++) {
+          parcels.push(parcel);
+        }
       });
-    }
+    console.log('Parcels:', parcels);
 
+    let rates;
     let calculatedRates = [];
     if (parcels.length > 0) {
       const shipment = await shippo.shipment.create({
@@ -234,18 +257,30 @@ app.post('/shopify/rate', async (req, res) => {
         parcels: parcels,
         async: false
       });
+      console.log('Shipment:', shipment);
 
-      const rates = shipment.rates;
+      rates = shipment.rates;
+      console.log('Rates:', rates);
 
-      calculatedRates = rates.map(rate => ({
-        service_name: oversizedItem ? `${rate.servicelevel.name} - Oversized Item Included, shipping rates may change on fulfillment` : rate.servicelevel.name,
-        service_code: rate.servicelevel.token,
-        total_price: (parseFloat(rate.amount) * 100).toFixed(0), // converting to cents
-        currency: rate.currency,
-        min_delivery_date: rate.estimated_days ? new Date(Date.now() + rate.estimated_days * 24 * 60 * 60 * 1000).toISOString() : undefined,
-        max_delivery_date: rate.estimated_days ? new Date(Date.now() + (rate.estimated_days + 2) * 24 * 60 * 60 * 1000).toISOString() : undefined,
-        description: rate.provider
-      }));
+      // Aggregate rates by service
+      let aggregatedRates = {};
+      rates.forEach(rate => {
+        const serviceCode = rate.servicelevel.token;
+        if (!aggregatedRates[serviceCode]) {
+          aggregatedRates[serviceCode] = {
+            service_name: oversizedItem ? `${rate.servicelevel.name} - Oversized Item Included, shipping rates may change on fullfillment` : rate.servicelevel.name,
+            service_code: serviceCode,
+            total_price: 0,
+            currency: rate.currency,
+            min_delivery_date: rate.estimated_days ? new Date(Date.now() + rate.estimated_days * 24 * 60 * 60 * 1000).toISOString() : undefined,
+            max_delivery_date: rate.estimated_days ? new Date(Date.now() + (rate.estimated_days + 2) * 24 * 60 * 60 * 1000).toISOString() : undefined,
+            description: rate.provider
+          };
+        }
+        aggregatedRates[serviceCode].total_price += parseFloat(rate.amount) * 100; // converting to cents
+      });
+
+      calculatedRates = Object.values(aggregatedRates);
     }
 
     if (hasFreeShippingItems && !hasNonFreeShippingItems) {
@@ -260,7 +295,13 @@ app.post('/shopify/rate', async (req, res) => {
       });
     }
 
-    res.json({ rates: calculatedRates });
+    console.log('Calculated Rates:', calculatedRates);
+
+    let response = {
+      rates: calculatedRates
+    };
+
+    res.json(response);
   } catch (error) {
     console.error('Error retrieving shop info:', error.response ? error.response.data : error.message);
     res.status(500).send('Error retrieving shop info');
