@@ -68,10 +68,10 @@ app.get('/shopify/callback', (req, res) => {
         const accessToken = accessTokenResponse.access_token;
 
         // Store the access token in the in-memory store
-        accessTokenStore[shop] = accessToken;
+        accessTokenStore[shop] = { accessToken, shopName: shop };
 
-        console.log("SHOP: " + shop);
-        console.log("Access-Token1: " + accessTokenStore[shop]);
+        console.log("SHOP: " + shop.shopName);
+        console.log("Access-Token1: " + accessTokenStore[shop].accessToken);
 
         const carrierServiceRequestUrl = `https://${shop}/admin/carrier_services.json`;
         const carrierServicePayload = {
@@ -179,12 +179,14 @@ app.post('/shopify/rate', async (req, res) => {
   const { rate } = req.body;
   const { origin, destination, items, currency, locale } = rate;
 
-   console.log(req.body);
+  const shopInfo = accessTokenStore[shop];
 
-  const shop = 'ts-stage-testing.myshopify.com'; // You should retrieve this dynamically if needed
-  const accessToken = accessTokenStore[shop]; // Retrieve the access token from the store
+  const accessToken = shopInfo.accessToken;
 
-  if (!accessToken) {
+  // const shop = 'ts-stage-testing.myshopify.com'; // You should retrieve this dynamically if needed
+  // const accessToken = accessTokenStore[shop]; // Retrieve the access token from the store
+
+  if (!shopInfo || !shopInfo.accessToken) {
     return res.status(403).send('Access token not found for the shop');
   }
 
