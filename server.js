@@ -181,7 +181,7 @@ app.post('/shopify/rate', async (req, res) => {
 
   const shopInfo = accessTokenStore[shop];
 
-  const accessToken = shopInfo.accessToken;
+
 
   // const shop = 'ts-stage-testing.myshopify.com'; // You should retrieve this dynamically if needed
   // const accessToken = accessTokenStore[shop]; // Retrieve the access token from the store
@@ -190,6 +190,7 @@ app.post('/shopify/rate', async (req, res) => {
     return res.status(403).send('Access token not found for the shop');
   }
 
+  const accessToken = shopInfo.accessToken;
   const apiRequestHeader = {
     'X-Shopify-Access-Token': accessToken,
     'Content-Type': 'application/json'
