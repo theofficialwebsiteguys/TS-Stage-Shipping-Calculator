@@ -226,15 +226,23 @@ app.post('/shopify/rate', async (req, res) => {
     console.log('Address To:', addressTo);
 
     let parcels = itemsWithMetafields
-      .filter(item => !item.metafields['global.free_shipping'] && !item.metafields['global.free_ship_discount'])
-      .map(item => ({
-        length: item.metafields['custom.length'] ? JSON.parse(item.metafields['custom.length']).value : 10,
-        width: item.metafields['custom.width'] ? JSON.parse(item.metafields['custom.width']).value : 10,
-        height: item.metafields['custom.height'] ? JSON.parse(item.metafields['custom.height']).value : 10,
+    .filter(item => {
+      const metafields = item.metafields;
+      const freeShipping = metafields['global.free_shipping'] ? JSON.parse(metafields['global.free_shipping']) : false;
+      const freeShipOverSized = metafields['global.free_ship_discount'] ? JSON.parse(metafields['global.free_ship_discount']) : false;
+      return !freeShipping && !freeShipOverSized;
+    })
+    .map(item => {
+      const metafields = item.metafields;
+      return {
+        length: metafields['custom.length'] ? JSON.parse(metafields['custom.length']).value : 10,
+        width: metafields['custom.width'] ? JSON.parse(metafields['custom.width']).value : 10,
+        height: metafields['custom.height'] ? JSON.parse(metafields['custom.height']).value : 10,
         distance_unit: 'in',
         weight: item.grams * 0.00220462, // Shippo expects weight in pounds
         mass_unit: 'lb'
-      }));
+      };
+    });
     console.log('Parcels:', parcels);
 
     let rates;
